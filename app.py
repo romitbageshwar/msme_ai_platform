@@ -337,7 +337,15 @@ if page == "Dashboard":
             </div>
             """, unsafe_allow_html=True)
         with col2:
-            st.metric("Revenue (Annual)", f"₹{np.mean(business['revenue'])*12/100000:.1f} Lakh", f"{((business['revenue'][-1]-business['revenue'][0])/business['revenue'][0]*100):.1f}%")
+           # Safe growth calculation
+rev_start = business['revenue'][0]
+rev_end = business['revenue'][-1]
+if rev_start != 0:
+    growth_pct = ((rev_end - rev_start) / rev_start * 100)
+    growth_str = f"{growth_pct:.1f}%"
+else:
+    growth_str = "N/A"  # or "0.0%" if you prefer
+st.metric("Revenue (Annual)", f"₹{np.mean(business['revenue'])*12/100000:.1f} Lakh", growth_str)
         with col3:
             st.metric("Employees", business['employees'], "↑ 4%")
         with col4:
