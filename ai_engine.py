@@ -607,6 +607,68 @@ class AIFinancialEngine:
             pdf_str = pdf_str.encode('ascii', errors='ignore').decode('ascii')
             pdf_bytes = pdf_str.encode('latin1')
         return pdf_bytes
+        def generate_pdf_report(self, health_card: Dict, business_details: Dict) -> bytes:
+    pdf = FPDF('P', 'mm', 'A4')
+    pdf.add_page()
+    pdf.set_font('Arial', 'B', 16)
+    pdf.cell(0, 10, 'MSME Financial Health Report', 0, 1, 'C')
+    pdf.ln(10)
+
+    # Sanitize all text before adding to PDF
+    name = self._sanitize_text(business_details.get('name', 'N/A'))
+    gstin = self._sanitize_text(business_details.get('gstin', 'N/A'))
+    industry = self._sanitize_text(business_details.get('industry', 'N/A'))
+
+    pdf.set_font('Arial', 'B', 12)
+    pdf.cell(0, 8, f"Business: {name}", 0, 1)
+    pdf.cell(0, 8, f"GSTIN: {gstin}", 0, 1)
+    pdf.cell(0, 8, f"Industry: {industry}", 0, 1)
+    pdf.ln(5)
+
+    # Health Score
+    score = health_card['overall_score']
+    pdf.set_font('Arial', 'B', 14)
+    pdf.cell(0, 10, f"Health Score: {score}/100", 0, 1)
+    pdf.set_font('Arial', '', 12)
+    risk = self._sanitize_text(health_card['risk_level'])
+    pdf.cell(0, 8, f"Risk Level: {risk}", 0, 1)
+    loan = health_card['loan_suitability']
+    pdf.cell(0, 8, f"Loan Suitability: {loan['level']} (₹{loan['max_amount']/100000:.1f} Lakh)", 0, 1)
+    pdf.ln(5)
+
+    # Dimensions
+    pdf.set_font('Arial', 'B', 12)
+    pdf.cell(0, 8, "Performance Dimensions:", 0, 1)
+    pdf.set_font('Arial', '', 11)
+    for dim, score_val in health_card['dimensions'].items():
+        dim_clean = self._sanitize_text(dim)
+        pdf.cell(0, 7, f"  {dim_clean}: {score_val}/100", 0, 1)
+
+    pdf.ln(5)
+
+    # Insights
+    pdf.set_font('Arial', 'B', 12)
+    pdf.cell(0, 8, "AI Insights:", 0, 1)
+    pdf.set_font('Arial', '', 11)
+    for insight in health_card['insights']:
+        clean_insight = self._sanitize_text(insight)
+        pdf.multi_cell(0, 7, f"• {clean_insight}")
+
+    pdf.ln(5)
+
+    # Confidence
+    pdf.set_font('Arial', 'I', 10)
+    pdf.cell(0, 8, f"AI Confidence: {health_card['confidence']:.0f}%", 0, 1)
+
+    # Generate PDF bytes safely
+    try:
+        pdf_bytes = pdf.output(dest='S').encode('latin1')
+    except UnicodeEncodeError:
+        # Fallback: strip any remaining non‑latin1 characters
+        pdf_str = pdf.output(dest='S')
+        pdf_str = pdf_str.encode('ascii', errors='ignore').decode('ascii')
+        pdf_bytes = pdf_str.encode('latin1')
+    return pdf_bytes
 
     # ---------- Business Health Analysis (for CSV uploads) ----------
     def generate_business_insights(self, business_data: Dict) -> Dict:
