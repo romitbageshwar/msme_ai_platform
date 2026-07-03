@@ -39,6 +39,10 @@ class AIFinancialEngine:
         # Replace common special characters
         replacements = {
             '→': '->',
+             '•': '-',
+    '₹': 'Rs.',
+    '–': '-',
+    '—': '-',
             '✓': '[OK]',
             '⚠️': '[WARNING]',
             '✅': '[OK]',
@@ -568,7 +572,7 @@ class AIFinancialEngine:
         risk = self._sanitize_text(health_card['risk_level'])
         pdf.cell(0, 8, f"Risk Level: {risk}", 0, 1)
         loan = health_card['loan_suitability']
-        pdf.cell(0, 8, f"Loan Suitability: {loan['level']} (₹{loan['max_amount']/100000:.1f} Lakh)", 0, 1)
+        pdf.cell(0, 8, f"Loan Suitability: {loan['level']} (Rs. {loan['max_amount']/100000:.1f} Lakh)", 0, 1)
         pdf.ln(5)
 
         # Dimensions
@@ -587,8 +591,7 @@ class AIFinancialEngine:
         pdf.set_font('Arial', '', 11)
         for insight in health_card['insights']:
             clean_insight = self._sanitize_text(insight)
-            pdf.multi_cell(0, 7, f"• {clean_insight}")
-
+           pdf.multi_cell(0, 7, f"- {clean_insight}")
         pdf.ln(5)
 
         # Confidence
