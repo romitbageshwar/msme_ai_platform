@@ -327,29 +327,29 @@ if page == "Dashboard":
         business = next(b for b in st.session_state.businesses if b['name'] == selected_name)
         st.session_state.selected_business = business
         
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div style="font-size:0.8rem;color:#718096;">Health Score</div>
-                <div style="font-size:2.5rem;font-weight:700;color:{'#00b894' if business['score']>=80 else '#fdcb6e' if business['score']>=70 else '#e17055'};">{business['score']}</div>
-                <div>{'Excellent' if business['score']>=80 else 'Good' if business['score']>=70 else 'Moderate'}</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with col2:
-           # Safe growth calculation
-rev_start = business['revenue'][0]
-rev_end = business['revenue'][-1]
-if rev_start != 0:
-    growth_pct = ((rev_end - rev_start) / rev_start * 100)
-    growth_str = f"{growth_pct:.1f}%"
-else:
-    growth_str = "N/A"  # or "0.0%" if you prefer
-st.metric("Revenue (Annual)", f"₹{np.mean(business['revenue'])*12/100000:.1f} Lakh", growth_str)
-        with col3:
-            st.metric("Employees", business['employees'], "↑ 4%")
-        with col4:
-            st.metric("Loan Suitability", "High" if business['score']>=80 else "Moderate", "Pre-approved" if business['score']>=80 else "")
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    st.markdown(f"""
+    <div class="metric-card">
+        <div style="font-size:0.8rem;color:#718096;">Health Score</div>
+        <div style="font-size:2.5rem;font-weight:700;color:{'#00b894' if business['score']>=80 else '#fdcb6e' if business['score']>=70 else '#e17055'};">{business['score']}</div>
+        <div>{'Excellent' if business['score']>=80 else 'Good' if business['score']>=70 else 'Moderate'}</div>
+    </div>
+    """, unsafe_allow_html=True)
+with col2:
+    # Safe growth calculation with zero check
+    rev_start = business['revenue'][0]
+    rev_end = business['revenue'][-1]
+    if rev_start != 0:
+        growth_pct = ((rev_end - rev_start) / rev_start * 100)
+        growth_str = f"{growth_pct:.1f}%"
+    else:
+        growth_str = "N/A"
+    st.metric("Revenue (Annual)", f"₹{np.mean(business['revenue'])*12/100000:.1f} Lakh", growth_str)
+with col3:
+    st.metric("Employees", business['employees'], "↑ 4%")
+with col4:
+    st.metric("Loan Suitability", "High" if business['score']>=80 else "Moderate", "Pre-approved" if business['score']>=80 else "")
         
         col_profile, col_score = st.columns([2,1])
         with col_profile:
