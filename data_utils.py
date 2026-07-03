@@ -1,21 +1,22 @@
 """
 Data utilities for MSME Financial Health Platform
-- Generate sample data for demo
+- Generate sample data for demo (10 businesses)
 - Load data from CSV uploads (businesses, applications)
 - Convert CSV rows into internal dictionary format
 """
 
 import random
-import re  # <-- fixed import
+import re
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Union
 
-# ---------- SAMPLE DATA GENERATORS ----------
+# ---------- SAMPLE DATA GENERATORS (Extended) ----------
 def generate_sample_businesses() -> List[Dict[str, Any]]:
-    """Generate a list of sample MSME businesses with financial data."""
-    return [
+    """Generate a list of 10 distinct MSME businesses with financial data."""
+    # Original 5 businesses (kept for backward compatibility)
+    businesses = [
         {
             "name": "Apex Manufacturing Solutions",
             "gstin": "29AAHCS7890E1Z8",
@@ -103,8 +104,99 @@ def generate_sample_businesses() -> List[Dict[str, Any]]:
         }
     ]
 
+    # ---------- NEW BUSINESSES (distinct) ----------
+    new_businesses = [
+        {
+            "name": "GreenLeaf Agro Industries",
+            "gstin": "66ATGH5678E4Z1",
+            "industry": "Agriculture & Food Processing",
+            "constitution": "Private Limited",
+            "location": "Ludhiana, Punjab",
+            "employees": 32,
+            "years": 7,
+            "revenue": [12, 14, 16, 18, 20, 22, 19, 25, 28, 30, 33, 36],
+            "cashflow": [8, 9, 11, 12, 14, 16, 13, 18, 20, 22, 24, 26],
+            "gst_score": 88,
+            "score": 85,
+            "status": "Active",
+            "upi_transactions": 6200,
+            "upi_collections": 1.45,
+            "active_customers": 780
+        },
+        {
+            "name": "DigitalVision IT Solutions",
+            "gstin": "77BNCD9012F5X3",
+            "industry": "IT Services",
+            "constitution": "Private Limited",
+            "location": "Bengaluru, Karnataka",
+            "employees": 62,
+            "years": 5,
+            "revenue": [45, 50, 55, 48, 60, 65, 58, 70, 75, 80, 85, 90],
+            "cashflow": [30, 35, 38, 32, 42, 46, 40, 52, 56, 60, 64, 68],
+            "gst_score": 95,
+            "score": 94,
+            "status": "Active",
+            "upi_transactions": 21500,
+            "upi_collections": 3.80,
+            "active_customers": 2450
+        },
+        {
+            "name": "Sai Ram Constructions",
+            "gstin": "88PVQR3456G6Y2",
+            "industry": "Construction & Real Estate",
+            "constitution": "Partnership",
+            "location": "Hyderabad, Telangana",
+            "employees": 55,
+            "years": 15,
+            "revenue": [40, 35, 38, 42, 45, 48, 50, 46, 52, 55, 58, 60],
+            "cashflow": [28, 24, 26, 30, 32, 34, 36, 32, 38, 40, 42, 44],
+            "gst_score": 70,
+            "score": 72,
+            "status": "Active",
+            "upi_transactions": 3200,
+            "upi_collections": 0.62,
+            "active_customers": 280
+        },
+        {
+            "name": "Annapurna Food Products",
+            "gstin": "99STUV7890H7W4",
+            "industry": "Food Processing",
+            "constitution": "Sole Proprietorship",
+            "location": "Kolkata, West Bengal",
+            "employees": 22,
+            "years": 9,
+            "revenue": [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+            "cashflow": [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+            "gst_score": 80,
+            "score": 78,
+            "status": "Active",
+            "upi_transactions": 5400,
+            "upi_collections": 0.98,
+            "active_customers": 520
+        },
+        {
+            "name": "Swift Logistics Pvt Ltd",
+            "gstin": "11WXYZ2345J8V6",
+            "industry": "Logistics & Supply Chain",
+            "constitution": "Private Limited",
+            "location": "Gurugram, Haryana",
+            "employees": 40,
+            "years": 6,
+            "revenue": [20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42],
+            "cashflow": [14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36],
+            "gst_score": 85,
+            "score": 82,
+            "status": "Active",
+            "upi_transactions": 9800,
+            "upi_collections": 1.85,
+            "active_customers": 920
+        }
+    ]
+
+    businesses.extend(new_businesses)
+    return businesses
+
 def generate_sample_applications() -> List[Dict[str, Any]]:
-    """Generate a list of sample loan applications."""
     return [
         {"id": "APP-2024-045", "business": "Apex Manufacturing Solutions", "gstin": "29AAHC...E1Z8",
          "amount": 42.5, "score": 92, "status": "Pending Review", "date": "2024-06-01"},
@@ -115,28 +207,32 @@ def generate_sample_applications() -> List[Dict[str, Any]]:
         {"id": "APP-2024-042", "business": "Goyal Exports", "gstin": "44LMNO...Z3Z5",
          "amount": 35.0, "score": 82, "status": "Under Verification", "date": "2024-05-27"},
         {"id": "APP-2024-041", "business": "Rathi Traders", "gstin": "55PQRS...X9Y1",
-         "amount": 28.5, "score": 76, "status": "Approved", "date": "2024-05-25"}
+         "amount": 28.5, "score": 76, "status": "Approved", "date": "2024-05-25"},
+        {"id": "APP-2024-046", "business": "GreenLeaf Agro Industries", "gstin": "66ATGH...E4Z1",
+         "amount": 30.0, "score": 85, "status": "Approved", "date": "2024-06-02"},
+        {"id": "APP-2024-047", "business": "DigitalVision IT Solutions", "gstin": "77BNCD...F5X3",
+         "amount": 80.0, "score": 94, "status": "Pending Review", "date": "2024-06-03"},
+        {"id": "APP-2024-048", "business": "Sai Ram Constructions", "gstin": "88PVQR...G6Y2",
+         "amount": 50.0, "score": 72, "status": "Under Verification", "date": "2024-06-04"},
+        {"id": "APP-2024-049", "business": "Annapurna Food Products", "gstin": "99STUV...H7W4",
+         "amount": 22.5, "score": 78, "status": "Approved", "date": "2024-06-05"},
+        {"id": "APP-2024-050", "business": "Swift Logistics Pvt Ltd", "gstin": "11WXYZ...J8V6",
+         "amount": 45.0, "score": 82, "status": "Pending Review", "date": "2024-06-06"}
     ]
 
 def generate_sample_alerts() -> List[Dict[str, Any]]:
-    """Generate a list of sample alerts/notifications."""
     return [
         {"time": "2 hours ago", "title": "⚠️ High Risk Alert", "desc": "Apex Manufacturing: Cash flow dropped 22% this month", "priority": "high"},
         {"time": "4 hours ago", "title": "✅ Document Verification", "desc": "Sai Industries - All documents verified successfully", "priority": "low"},
         {"time": "Yesterday", "title": "📊 Monthly Report Ready", "desc": "June 2024 portfolio report is available for download", "priority": "medium"},
         {"time": "Yesterday", "title": "🎯 Pre-Approved Offers", "desc": "3 new MSMEs are eligible for pre-approved loans", "priority": "medium"},
-        {"time": "2 days ago", "title": "⚠️ Compliance Reminder", "desc": "Goyal Exports - GST filing due in 3 days", "priority": "high"}
+        {"time": "2 days ago", "title": "⚠️ Compliance Reminder", "desc": "Goyal Exports - GST filing due in 3 days", "priority": "high"},
+        {"time": "1 day ago", "title": "📈 Strong Growth", "desc": "DigitalVision IT Solutions shows 25% revenue growth", "priority": "low"},
+        {"time": "3 days ago", "title": "⚠️ Seasonal Dip", "desc": "Sai Ram Constructions - revenue down 15% due to monsoon", "priority": "medium"}
     ]
 
 # ---------- CSV LOADERS ----------
 def load_businesses_from_csv(file) -> List[Dict[str, Any]]:
-    """
-    Load business data from a CSV file.
-    Expected columns:
-        name, gstin, industry, constitution, location, employees, years,
-        revenue (comma-separated numbers), cashflow (comma-separated),
-        gst_score, score, status, upi_transactions, upi_collections, active_customers
-    """
     df = pd.read_csv(file)
     businesses = []
     for _, row in df.iterrows():
@@ -146,7 +242,6 @@ def load_businesses_from_csv(file) -> List[Dict[str, Any]]:
             revenue = list(np.random.randint(10, 50, 12))
         if not cashflow:
             cashflow = list(np.random.randint(5, 30, 12))
-
         biz = {
             "name": str(row.get('name', 'Unknown')),
             "gstin": str(row.get('gstin', '')),
@@ -168,7 +263,6 @@ def load_businesses_from_csv(file) -> List[Dict[str, Any]]:
     return businesses
 
 def load_applications_from_csv(file) -> List[Dict[str, Any]]:
-    """Load loan applications from CSV."""
     df = pd.read_csv(file)
     apps = []
     for _, row in df.iterrows():
@@ -185,7 +279,6 @@ def load_applications_from_csv(file) -> List[Dict[str, Any]]:
     return apps
 
 def load_alerts_from_csv(file) -> List[Dict[str, Any]]:
-    """Load alerts from CSV (optional)."""
     df = pd.read_csv(file)
     alerts = []
     for _, row in df.iterrows():
@@ -198,9 +291,8 @@ def load_alerts_from_csv(file) -> List[Dict[str, Any]]:
         alerts.append(alert)
     return alerts
 
-# ---------- HELPER: Parse comma-separated list ----------
+# ---------- HELPER ----------
 def _parse_list(value: Union[str, List, None]) -> List[float]:
-    """Convert a comma-separated string or list to a list of floats."""
     if value is None:
         return []
     if isinstance(value, list):
@@ -215,13 +307,11 @@ def _parse_list(value: Union[str, List, None]) -> List[float]:
             return []
     return []
 
-# ---------- SAVE SAMPLE DATA TO CSV (optional) ----------
+# ---------- SAVE SAMPLE DATA TO CSV ----------
 def save_sample_data_to_csv(businesses_file="data/sample_businesses.csv",
                             apps_file="data/sample_applications.csv",
                             alerts_file="data/sample_alerts.csv"):
-    """Export sample data to CSV files for template use."""
     import csv
-    # Businesses
     businesses = generate_sample_businesses()
     with open(businesses_file, 'w', newline='') as f:
         writer = csv.writer(f)
@@ -237,7 +327,6 @@ def save_sample_data_to_csv(businesses_file="data/sample_businesses.csv",
                 b['gst_score'], b['score'], b['status'],
                 b['upi_transactions'], b['upi_collections'], b['active_customers']
             ])
-    # Applications
     apps = generate_sample_applications()
     with open(apps_file, 'w', newline='') as f:
         writer = csv.writer(f)
@@ -245,7 +334,6 @@ def save_sample_data_to_csv(businesses_file="data/sample_businesses.csv",
         for a in apps:
             writer.writerow([a['id'], a['business'], a['gstin'], a['amount'],
                              a['score'], a['status'], a['date']])
-    # Alerts
     alerts = generate_sample_alerts()
     with open(alerts_file, 'w', newline='') as f:
         writer = csv.writer(f)
