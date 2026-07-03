@@ -6,6 +6,7 @@ Data utilities for MSME Financial Health Platform
 """
 
 import random
+import re  # <-- added missing import
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -235,7 +236,6 @@ def save_sample_data_to_csv(businesses_file="data/sample_businesses.csv",
     businesses = generate_sample_businesses()
     with open(businesses_file, 'w', newline='') as f:
         writer = csv.writer(f)
-        # header
         writer.writerow(['name','gstin','industry','constitution','location',
                          'employees','years','revenue','cashflow','gst_score',
                          'score','status','upi_transactions','upi_collections',
