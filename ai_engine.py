@@ -1,12 +1,17 @@
 """
 AI Engine for MSME Financial Health Platform
-Handles document analysis, business health scoring, loan eligibility, chat, and insights.
+Handles document analysis, business health scoring, loan eligibility, chat, CSV processing, and PDF generation.
 """
 
 import re
 import random
 import numpy as np
+import pandas as pd
 from typing import Dict, List, Any, Optional
+from fpdf import FPDF
+import io
+import base64
+from datetime import datetime
 
 class AIFinancialEngine:
     """Complete AI engine for MSME financial analysis"""
@@ -18,44 +23,30 @@ class AIFinancialEngine:
         self.applications = []
         self.alerts = []
 
-    # ---------- Document Analysis (with multiple sources) ----------
+    # ---------- Document Analysis (Text) ----------
     def analyze_documents(self, documents: Dict[str, str]) -> Dict:
-        """
-        Analyze multiple uploaded documents and extract consolidated metrics.
-        documents: dict with keys like 'gst', 'bank_statement', 'upi', 'epfo', 'itr', 'utility'
-        Returns a dict with combined metrics, insights, and confidence score.
-        """
+        """Analyze multiple uploaded text documents (legacy)"""
         combined_metrics = {}
         all_insights = []
         confidence = 0.0
         num_docs = 0
 
-        # Process each document if provided
         for doc_type, text in documents.items():
             if text:
                 num_docs += 1
-                # Extract metrics from this document
                 metrics = self._extract_metrics_from_text(text)
                 combined_metrics[doc_type] = metrics
-                # Generate insights for this document
                 insights = self._generate_document_insights(metrics)
                 all_insights.extend(insights)
 
-        # Aggregate metrics from all documents
         aggregated = self._aggregate_metrics(combined_metrics)
-
-        # Confidence: higher with more documents
-        confidence = min(98, 60 + num_docs * 8)  # 60% base, +8% per doc
-
-        # Overall summary
+        confidence = min(98, 60 + num_docs * 8)
         summary = self._generate_consolidated_summary(aggregated, all_insights)
-
-        # Generate health card data
         health_card = self._generate_health_card(aggregated, all_insights, confidence)
 
         return {
             'metrics': aggregated,
-            'insights': list(set(all_insights)),  # remove duplicates
+            'insights': list(set(all_insights)),
             'confidence': confidence,
             'summary': summary,
             'health_card': health_card,
@@ -63,7 +54,6 @@ class AIFinancialEngine:
         }
 
     def _extract_metrics_from_text(self, text: str) -> Dict:
-        """Extract all possible financial metrics from a single text."""
         return {
             'revenue': self._extract_revenue(text),
             'expenses': self._extract_expenses(text),
@@ -253,31 +243,18 @@ class AIFinancialEngine:
         return insights
 
     def _aggregate_metrics(self, combined_metrics: Dict) -> Dict:
-        """Combine metrics from multiple documents into a single aggregated dict."""
-        aggregated = {
-            'revenue': {},
-            'expenses': {},
-            'profit': {},
-            'gst': {},
-            'employees': 0,
-            'business_age': 0,
-            'upi': {},
-            'gst_filings': {}
-        }
-        # Take the first non-empty value for each key
+        aggregated = {}
         for doc_type, metrics in combined_metrics.items():
-            for key in aggregated.keys():
-                if key in metrics and metrics[key]:
-                    if isinstance(aggregated[key], dict) and not aggregated[key]:
-                        aggregated[key] = metrics[key]
-                    elif key == 'employees' and aggregated[key] == 0:
-                        aggregated[key] = metrics[key]
-                    elif key == 'business_age' and aggregated[key] == 0:
-                        aggregated[key] = metrics[key]
+            for key, value in metrics.items():
+                if key not in aggregated:
+                    aggregated[key] = value
+                elif isinstance(value, dict) and not aggregated[key]:
+                    aggregated[key] = value
+                elif isinstance(value, (int, float)) and aggregated[key] == 0:
+                    aggregated[key] = value
         return aggregated
 
     def _generate_consolidated_summary(self, aggregated: Dict, insights: List[str]) -> str:
-        """Generate a natural language summary from aggregated metrics and insights."""
         revenue = aggregated.get('revenue', {})
         employees = aggregated.get('employees', 0)
         business_age = aggregated.get('business_age', 0)
@@ -296,10 +273,8 @@ class AIFinancialEngine:
         return base
 
     def _generate_health_card(self, aggregated: Dict, insights: List[str], confidence: float) -> Dict:
-        """Generate a health card from aggregated data."""
-        # Compute scores
         revenue_score = self._calculate_revenue_score_from_metrics(aggregated.get('revenue', {}))
-        cashflow_score = random.randint(65, 90)  # placeholder – would need cashflow data
+        cashflow_score = random.randint(65, 90)
         compliance_score = 85 if aggregated.get('gst', {}).get('compliance') == 'good' else 60
         stability_score = min(100, (aggregated.get('employees', 0) * 2) + (aggregated.get('business_age', 0) * 2))
         overall = (revenue_score * 0.35 + cashflow_score * 0.25 + compliance_score * 0.20 + stability_score * 0.20)
@@ -317,16 +292,14 @@ class AIFinancialEngine:
                 'Business Stability': round(stability_score, 1)
             },
             'risk_level': risk_level,
-            'insights': insights,
+            'insights': insights[:5],
             'loan_suitability': loan_suitability,
             'confidence': confidence
         }
 
     def _calculate_revenue_score_from_metrics(self, revenue_metrics: Dict) -> float:
-        # Use annual revenue and growth to compute a score
         if not revenue_metrics:
             return 50.0
-        # If we have annual revenue, scale it
         annual = revenue_metrics.get('annual', 0)
         growth = revenue_metrics.get('growth', 0)
         base_score = 50
@@ -336,7 +309,6 @@ class AIFinancialEngine:
             base_score += 10
         elif annual > 1000000:
             base_score += 5
-        # Add growth bonus
         if growth > 15:
             base_score += 15
         elif growth > 5:
@@ -353,7 +325,222 @@ class AIFinancialEngine:
         else:
             return {'level': 'Low', 'max_amount': 500000, 'interest': '16-18%'}
 
-    # ---------- Business Health Analysis (for CSV) ----------
+    # ---------- NEW: CSV Document Processing ----------
+    def process_csv_documents(self, csv_data: Dict[str, pd.DataFrame]) -> Dict:
+        """Process multiple CSV files (GST, Bank, UPI, EPFO, etc.) and generate health card."""
+        metrics = {}
+        for source, df in csv_data.items():
+            if df is not None and not df.empty:
+                extracted = self._extract_metrics_from_csv(source, df)
+                metrics[source] = extracted
+
+        aggregated = self._aggregate_csv_metrics(metrics)
+        revenue_score = self._calculate_revenue_score_from_csv(aggregated)
+        cashflow_score = self._calculate_cashflow_score_from_csv(aggregated)
+        compliance_score = self._calculate_compliance_score_from_csv(aggregated)
+        stability_score = self._calculate_stability_score_from_csv(aggregated)
+
+        overall = (revenue_score * 0.35 + cashflow_score * 0.25 +
+                   compliance_score * 0.20 + stability_score * 0.20)
+
+        risk_level = "Low" if overall >= 80 else "Medium" if overall >= 60 else "High"
+        loan_suitability = self._calculate_loan_suitability(overall, [])
+        insights = self._generate_csv_insights(aggregated, revenue_score, cashflow_score)
+
+        health_card = {
+            'overall_score': round(overall, 1),
+            'dimensions': {
+                'Revenue Health': round(revenue_score, 1),
+                'Cash Flow Health': round(cashflow_score, 1),
+                'Compliance Score': round(compliance_score, 1),
+                'Business Stability': round(stability_score, 1)
+            },
+            'risk_level': risk_level,
+            'loan_suitability': loan_suitability,
+            'insights': insights,
+            'confidence': 60 + len(csv_data) * 8
+        }
+        summary = self._generate_csv_summary(aggregated, insights)
+
+        return {
+            'metrics': aggregated,
+            'insights': insights,
+            'confidence': health_card['confidence'],
+            'summary': summary,
+            'health_card': health_card,
+            'num_documents': len(csv_data)
+        }
+
+    def _extract_metrics_from_csv(self, source: str, df: pd.DataFrame) -> Dict:
+        metrics = {}
+        try:
+            if source == 'gst':
+                if 'turnover' in df.columns:
+                    metrics['revenue_annual'] = df['turnover'].sum() / 12
+                if 'filing_date' in df.columns:
+                    metrics['gst_compliance'] = len(df)
+                if 'tax_paid' in df.columns:
+                    metrics['tax_paid'] = df['tax_paid'].sum()
+            elif source == 'bank_statement':
+                if 'amount' in df.columns and 'type' in df.columns:
+                    credits = df[df['type'] == 'credit']['amount'].sum()
+                    debits = df[df['type'] == 'debit']['amount'].sum()
+                    metrics['total_credits'] = credits
+                    metrics['total_debits'] = debits
+                    metrics['cash_balance'] = credits - debits
+            elif source == 'upi':
+                if 'amount' in df.columns:
+                    metrics['upi_volume'] = len(df)
+                    metrics['upi_total'] = df['amount'].sum()
+                if 'customer_id' in df.columns:
+                    metrics['upi_customers'] = df['customer_id'].nunique()
+            elif source == 'epfo':
+                if 'employees' in df.columns:
+                    metrics['employee_count'] = df['employees'].max()
+                if 'salary_month' in df.columns:
+                    metrics['payroll_consistency'] = len(df['salary_month'].unique())
+            elif source == 'itr':
+                if 'income' in df.columns:
+                    metrics['itr_income'] = df['income'].sum()
+                if 'expenses' in df.columns:
+                    metrics['itr_expenses'] = df['expenses'].sum()
+                if 'profit' in df.columns:
+                    metrics['itr_profit'] = df['profit'].sum()
+            elif source == 'utility':
+                if 'bill_amount' in df.columns:
+                    metrics['utility_spend'] = df['bill_amount'].sum()
+                if 'payment_date' in df.columns and 'due_date' in df.columns:
+                    on_time = (df['payment_date'] <= df['due_date']).sum()
+                    metrics['utility_compliance'] = on_time / len(df) * 100
+        except Exception as e:
+            print(f"Error extracting from {source}: {e}")
+        return metrics
+
+    def _aggregate_csv_metrics(self, metrics: Dict) -> Dict:
+        aggregated = {}
+        for source, data in metrics.items():
+            for key, value in data.items():
+                if key in aggregated:
+                    if isinstance(value, (int, float)):
+                        if key in ['gst_compliance', 'payroll_consistency', 'utility_compliance']:
+                            aggregated[key] = max(aggregated[key], value)
+                        else:
+                            aggregated[key] += value
+                else:
+                    aggregated[key] = value
+        return aggregated
+
+    def _calculate_revenue_score_from_csv(self, aggregated: Dict) -> float:
+        revenue_sources = ['upi_total', 'total_credits', 'itr_income']
+        total = sum(aggregated.get(k, 0) for k in revenue_sources)
+        if total == 0:
+            return 50.0
+        score = min(100, (total / 5000000) * 100)
+        return max(0, score)
+
+    def _calculate_cashflow_score_from_csv(self, aggregated: Dict) -> float:
+        credits = aggregated.get('total_credits', 0)
+        debits = aggregated.get('total_debits', 0)
+        if credits == 0:
+            return 50.0
+        ratio = credits / max(debits, 1)
+        score = min(100, (ratio / 1.2) * 100)
+        return max(0, score)
+
+    def _calculate_compliance_score_from_csv(self, aggregated: Dict) -> float:
+        gst_filings = aggregated.get('gst_compliance', 0)
+        utility_compliance = aggregated.get('utility_compliance', 0)
+        gst_score = min(100, (gst_filings / 12) * 100)
+        util_score = utility_compliance
+        return (gst_score * 0.7 + util_score * 0.3)
+
+    def _calculate_stability_score_from_csv(self, aggregated: Dict) -> float:
+        employees = aggregated.get('employee_count', 0)
+        customers = aggregated.get('upi_customers', 0)
+        emp_score = min(100, employees * 2)
+        cust_score = min(100, customers / 20)
+        return (emp_score * 0.5 + cust_score * 0.5)
+
+    def _generate_csv_insights(self, aggregated: Dict, rev_score: float, cf_score: float) -> List[str]:
+        insights = []
+        if rev_score >= 80:
+            insights.append("📈 Strong revenue base from digital transactions")
+        elif rev_score >= 60:
+            insights.append("📊 Moderate revenue – consider diversifying income sources")
+        if cf_score >= 80:
+            insights.append("💵 Healthy cash flow with positive net balance")
+        elif cf_score >= 60:
+            insights.append("💵 Cash flow is adequate but can be improved")
+        if aggregated.get('gst_compliance', 0) >= 10:
+            insights.append("✅ Good GST compliance – regular filings")
+        if aggregated.get('upi_customers', 0) > 100:
+            insights.append("📱 High digital customer engagement")
+        if aggregated.get('employee_count', 0) > 20:
+            insights.append("👥 Substantial workforce – operational capacity")
+        if len(insights) == 0:
+            insights.append("🔍 Insufficient data for detailed insights – upload more CSVs")
+        return insights
+
+    def _generate_csv_summary(self, aggregated: Dict, insights: List[str]) -> str:
+        total_rev = sum(aggregated.get(k, 0) for k in ['upi_total', 'total_credits', 'itr_income'])
+        emp = aggregated.get('employee_count', 0)
+        summary = f"Based on {len(aggregated)} data sources, the business has "
+        if total_rev > 0:
+            summary += f"total revenue of ₹{total_rev/100000:.1f} Lakh "
+        if emp > 0:
+            summary += f"with {emp} employees. "
+        summary += "Financial health is "
+        score = self._calculate_revenue_score_from_csv(aggregated)
+        if score >= 80:
+            summary += "strong with positive indicators."
+        elif score >= 60:
+            summary += "moderate – scope for improvement."
+        else:
+            summary += "needs attention – review expenses and revenue."
+        return summary
+
+    # ---------- PDF Generation ----------
+    def generate_pdf_report(self, health_card: Dict, business_details: Dict) -> bytes:
+        pdf = FPDF('P', 'mm', 'A4')
+        pdf.add_page()
+        pdf.set_font('Arial', 'B', 16)
+        pdf.cell(0, 10, 'MSME Financial Health Report', 0, 1, 'C')
+        pdf.ln(10)
+
+        pdf.set_font('Arial', 'B', 12)
+        pdf.cell(0, 8, f"Business: {business_details.get('name', 'N/A')}", 0, 1)
+        pdf.cell(0, 8, f"GSTIN: {business_details.get('gstin', 'N/A')}", 0, 1)
+        pdf.cell(0, 8, f"Industry: {business_details.get('industry', 'N/A')}", 0, 1)
+        pdf.ln(5)
+
+        pdf.set_font('Arial', 'B', 14)
+        pdf.cell(0, 10, f"Health Score: {health_card['overall_score']}/100", 0, 1)
+        pdf.set_font('Arial', '', 12)
+        pdf.cell(0, 8, f"Risk Level: {health_card['risk_level']}", 0, 1)
+        pdf.cell(0, 8, f"Loan Suitability: {health_card['loan_suitability']['level']} (₹{health_card['loan_suitability']['max_amount']/100000:.1f} Lakh)", 0, 1)
+        pdf.ln(5)
+
+        pdf.set_font('Arial', 'B', 12)
+        pdf.cell(0, 8, "Performance Dimensions:", 0, 1)
+        pdf.set_font('Arial', '', 11)
+        for dim, score in health_card['dimensions'].items():
+            pdf.cell(0, 7, f"  {dim}: {score}/100", 0, 1)
+
+        pdf.ln(5)
+        pdf.set_font('Arial', 'B', 12)
+        pdf.cell(0, 8, "AI Insights:", 0, 1)
+        pdf.set_font('Arial', '', 11)
+        for insight in health_card['insights']:
+            pdf.multi_cell(0, 7, f"• {insight}")
+
+        pdf.ln(5)
+        pdf.set_font('Arial', 'I', 10)
+        pdf.cell(0, 8, f"AI Confidence: {health_card['confidence']:.0f}%", 0, 1)
+
+        pdf_bytes = pdf.output(dest='S').encode('latin1')
+        return pdf_bytes
+
+    # ---------- Business Health Analysis (for CSV uploads) ----------
     def generate_business_insights(self, business_data: Dict) -> Dict:
         revenue = business_data.get('revenue', [])
         cashflow = business_data.get('cashflow', [])
