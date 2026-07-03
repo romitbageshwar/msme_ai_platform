@@ -23,6 +23,48 @@ class AIFinancialEngine:
         self.applications = []
         self.alerts = []
 
+    # ---------- Helper to sanitize text for PDF ----------
+    def _sanitize_text(self, text: str) -> str:
+        """Remove emojis and non‑latin1 characters for PDF compatibility."""
+        # Remove common emojis
+        emoji_pattern = re.compile("["
+            u"\U0001F600-\U0001F64F"  # emoticons
+            u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+            u"\U0001F680-\U0001F6FF"  # transport & map symbols
+            u"\U0001F1E0-\U0001F1FF"  # flags
+            u"\U00002702-\U000027B0"
+            u"\U000024C2-\U0001F251"
+            "]+", flags=re.UNICODE)
+        text = emoji_pattern.sub(r'', text)
+        # Replace common special characters
+        replacements = {
+            '→': '->',
+            '✓': '[OK]',
+            '⚠️': '[WARNING]',
+            '✅': '[OK]',
+            '📊': '[DATA]',
+            '📈': '[GROWTH]',
+            '💪': '[STRONG]',
+            '💰': '[MONEY]',
+            '🏢': '[BUSINESS]',
+            '👥': '[TEAM]',
+            '📱': '[DIGITAL]',
+            '🚀': '[GROWTH]',
+            '🎯': '[TARGET]',
+            '🔍': '[SEARCH]',
+            '🔔': '[ALERT]',
+            '📑': '[REPORT]',
+            '⚙️': '[SETTINGS]',
+            '📄': '[DOCUMENT]',
+            '💬': '[CHAT]',
+            '🧠': '[AI]'
+        }
+        for char, replacement in replacements.items():
+            text = text.replace(char, replacement)
+        # Remove any remaining non‑latin1 characters
+        text = text.encode('latin1', errors='ignore').decode('latin1')
+        return text
+
     # ---------- Document Analysis (Text) ----------
     def analyze_documents(self, documents: Dict[str, str]) -> Dict:
         """Analyze multiple uploaded text documents (legacy)"""
@@ -200,46 +242,46 @@ class AIFinancialEngine:
         if revenue:
             avg_rev = np.mean(list(revenue.values())) if revenue else 0
             if avg_rev > 10000000:
-                insights.append(f"📊 High revenue generation - ₹{avg_rev/10000000:.1f} Cr annual turnover")
+                insights.append(f"High revenue generation - ₹{avg_rev/10000000:.1f} Cr annual turnover")
             elif avg_rev > 1000000:
-                insights.append(f"📊 Healthy revenue base - ₹{avg_rev/100000:.1f} Lakh annual turnover")
+                insights.append(f"Healthy revenue base - ₹{avg_rev/100000:.1f} Lakh annual turnover")
             if 'growth' in revenue:
-                insights.append(f"📈 Revenue growing at {revenue['growth']:.1f}% year-over-year")
+                insights.append(f"Revenue growing at {revenue['growth']:.1f}% year-over-year")
 
         if employees > 50:
-            insights.append(f"👥 Large workforce of {employees} employees - strong operational capacity")
+            insights.append(f"Large workforce of {employees} employees - strong operational capacity")
         elif employees > 10:
-            insights.append(f"👥 Stable workforce of {employees} employees")
+            insights.append(f"Stable workforce of {employees} employees")
 
         if business_age > 10:
-            insights.append("🏢 Established business with decade+ track record")
+            insights.append("Established business with decade+ track record")
         elif business_age > 5:
-            insights.append("🏢 Mature business with 5+ years of operations")
+            insights.append("Mature business with 5+ years of operations")
 
         if profit:
             if 'margin' in profit:
                 if profit['margin'] > 20:
-                    insights.append(f"💰 Excellent profit margin of {profit['margin']:.1f}%")
+                    insights.append(f"Excellent profit margin of {profit['margin']:.1f}%")
                 elif profit['margin'] > 10:
-                    insights.append(f"💰 Healthy profit margin of {profit['margin']:.1f}%")
+                    insights.append(f"Healthy profit margin of {profit['margin']:.1f}%")
                 else:
-                    insights.append(f"📊 Profit margin at {profit['margin']:.1f}% - room for improvement")
+                    insights.append(f"Profit margin at {profit['margin']:.1f}% - room for improvement")
 
         if gst.get('has_gst', False):
             if gst.get('compliance') == 'good':
-                insights.append("✅ GST-compliant with regular filings")
+                insights.append("GST-compliant with regular filings")
             else:
-                insights.append("📋 GST registered - check compliance status")
+                insights.append("GST registered - check compliance status")
 
         if upi.get('transactions', 0) > 1000:
-            insights.append(f"📱 High digital adoption - {upi['transactions']} UPI transactions")
+            insights.append(f"High digital adoption - {upi['transactions']} UPI transactions")
 
         if len(insights) >= 4:
-            insights.append("💪 Overall strong financial position with multiple positive indicators")
+            insights.append("Overall strong financial position with multiple positive indicators")
         elif len(insights) >= 2:
-            insights.append("📊 Moderate financial health with some positive indicators")
+            insights.append("Moderate financial health with some positive indicators")
         else:
-            insights.append("🔍 Limited financial data available - consider providing more documentation")
+            insights.append("Limited financial data available - consider providing more documentation")
         return insights
 
     def _aggregate_metrics(self, combined_metrics: Dict) -> Dict:
@@ -325,7 +367,7 @@ class AIFinancialEngine:
         else:
             return {'level': 'Low', 'max_amount': 500000, 'interest': '16-18%'}
 
-    # ---------- NEW: CSV Document Processing ----------
+    # ---------- CSV Document Processing ----------
     def process_csv_documents(self, csv_data: Dict[str, pd.DataFrame]) -> Dict:
         """Process multiple CSV files (GST, Bank, UPI, EPFO, etc.) and generate health card."""
         metrics = {}
@@ -464,21 +506,21 @@ class AIFinancialEngine:
     def _generate_csv_insights(self, aggregated: Dict, rev_score: float, cf_score: float) -> List[str]:
         insights = []
         if rev_score >= 80:
-            insights.append("📈 Strong revenue base from digital transactions")
+            insights.append("Strong revenue base from digital transactions")
         elif rev_score >= 60:
-            insights.append("📊 Moderate revenue – consider diversifying income sources")
+            insights.append("Moderate revenue – consider diversifying income sources")
         if cf_score >= 80:
-            insights.append("💵 Healthy cash flow with positive net balance")
+            insights.append("Healthy cash flow with positive net balance")
         elif cf_score >= 60:
-            insights.append("💵 Cash flow is adequate but can be improved")
+            insights.append("Cash flow is adequate but can be improved")
         if aggregated.get('gst_compliance', 0) >= 10:
-            insights.append("✅ Good GST compliance – regular filings")
+            insights.append("Good GST compliance – regular filings")
         if aggregated.get('upi_customers', 0) > 100:
-            insights.append("📱 High digital customer engagement")
+            insights.append("High digital customer engagement")
         if aggregated.get('employee_count', 0) > 20:
-            insights.append("👥 Substantial workforce – operational capacity")
+            insights.append("Substantial workforce – operational capacity")
         if len(insights) == 0:
-            insights.append("🔍 Insufficient data for detailed insights – upload more CSVs")
+            insights.append("Insufficient data for detailed insights – upload more CSVs")
         return insights
 
     def _generate_csv_summary(self, aggregated: Dict, insights: List[str]) -> str:
@@ -499,7 +541,7 @@ class AIFinancialEngine:
             summary += "needs attention – review expenses and revenue."
         return summary
 
-    # ---------- PDF Generation ----------
+    # ---------- PDF Generation (FIXED) ----------
     def generate_pdf_report(self, health_card: Dict, business_details: Dict) -> bytes:
         pdf = FPDF('P', 'mm', 'A4')
         pdf.add_page()
@@ -507,37 +549,63 @@ class AIFinancialEngine:
         pdf.cell(0, 10, 'MSME Financial Health Report', 0, 1, 'C')
         pdf.ln(10)
 
+        # Sanitize all text before adding to PDF
+        name = self._sanitize_text(business_details.get('name', 'N/A'))
+        gstin = self._sanitize_text(business_details.get('gstin', 'N/A'))
+        industry = self._sanitize_text(business_details.get('industry', 'N/A'))
+
         pdf.set_font('Arial', 'B', 12)
-        pdf.cell(0, 8, f"Business: {business_details.get('name', 'N/A')}", 0, 1)
-        pdf.cell(0, 8, f"GSTIN: {business_details.get('gstin', 'N/A')}", 0, 1)
-        pdf.cell(0, 8, f"Industry: {business_details.get('industry', 'N/A')}", 0, 1)
+        pdf.cell(0, 8, f"Business: {name}", 0, 1)
+        pdf.cell(0, 8, f"GSTIN: {gstin}", 0, 1)
+        pdf.cell(0, 8, f"Industry: {industry}", 0, 1)
         pdf.ln(5)
 
+        # Health Score
+        score = health_card['overall_score']
         pdf.set_font('Arial', 'B', 14)
-        pdf.cell(0, 10, f"Health Score: {health_card['overall_score']}/100", 0, 1)
+        pdf.cell(0, 10, f"Health Score: {score}/100", 0, 1)
         pdf.set_font('Arial', '', 12)
-        pdf.cell(0, 8, f"Risk Level: {health_card['risk_level']}", 0, 1)
-        pdf.cell(0, 8, f"Loan Suitability: {health_card['loan_suitability']['level']} (₹{health_card['loan_suitability']['max_amount']/100000:.1f} Lakh)", 0, 1)
+        risk = self._sanitize_text(health_card['risk_level'])
+        pdf.cell(0, 8, f"Risk Level: {risk}", 0, 1)
+        loan = health_card['loan_suitability']
+        pdf.cell(0, 8, f"Loan Suitability: {loan['level']} (₹{loan['max_amount']/100000:.1f} Lakh)", 0, 1)
         pdf.ln(5)
 
+        # Dimensions
         pdf.set_font('Arial', 'B', 12)
         pdf.cell(0, 8, "Performance Dimensions:", 0, 1)
         pdf.set_font('Arial', '', 11)
-        for dim, score in health_card['dimensions'].items():
-            pdf.cell(0, 7, f"  {dim}: {score}/100", 0, 1)
+        for dim, score_val in health_card['dimensions'].items():
+            dim_clean = self._sanitize_text(dim)
+            pdf.cell(0, 7, f"  {dim_clean}: {score_val}/100", 0, 1)
 
         pdf.ln(5)
+
+        # Insights
         pdf.set_font('Arial', 'B', 12)
         pdf.cell(0, 8, "AI Insights:", 0, 1)
         pdf.set_font('Arial', '', 11)
         for insight in health_card['insights']:
-            pdf.multi_cell(0, 7, f"• {insight}")
+            clean_insight = self._sanitize_text(insight)
+            pdf.multi_cell(0, 7, f"• {clean_insight}")
 
         pdf.ln(5)
+
+        # Confidence
         pdf.set_font('Arial', 'I', 10)
         pdf.cell(0, 8, f"AI Confidence: {health_card['confidence']:.0f}%", 0, 1)
 
-        pdf_bytes = pdf.output(dest='S').encode('latin1')
+        # Generate PDF bytes
+        try:
+            # Using 'S' returns a string; we then encode to bytes.
+            # After sanitization, all text is latin1-compatible.
+            pdf_bytes = pdf.output(dest='S').encode('latin1')
+        except UnicodeEncodeError:
+            # Fallback: remove any remaining non-latin1 chars
+            # (shouldn't happen, but just in case)
+            pdf_str = pdf.output(dest='S')
+            pdf_str = pdf_str.encode('ascii', errors='ignore').decode('ascii')
+            pdf_bytes = pdf_str.encode('latin1')
         return pdf_bytes
 
     # ---------- Business Health Analysis (for CSV uploads) ----------
@@ -558,28 +626,28 @@ class AIFinancialEngine:
         if revenue and len(revenue) > 1:
             growth = (revenue[-1] - revenue[0]) / revenue[0] * 100 if revenue[0] > 0 else 0
             if growth > 20:
-                insights.append("🚀 Strong revenue growth trajectory")
+                insights.append("Strong revenue growth trajectory")
                 recommendations.append("Consider expanding operations to capitalize on growth")
             elif growth > 10:
-                insights.append("📈 Steady revenue growth")
+                insights.append("Steady revenue growth")
             elif growth > 0:
-                insights.append("📊 Modest revenue growth")
+                insights.append("Modest revenue growth")
                 recommendations.append("Explore new markets to accelerate growth")
             else:
-                risks.append("⚠️ Revenue decline detected")
+                risks.append("Revenue decline detected")
                 recommendations.append("Review pricing strategy and customer acquisition")
 
         if cashflow and len(cashflow) > 1:
             if all(cf > 0 for cf in cashflow):
-                insights.append("💪 Consistent positive cashflow")
+                insights.append("Consistent positive cashflow")
             elif any(cf < 0 for cf in cashflow):
-                risks.append("⚠️ Negative cashflow periods detected")
+                risks.append("Negative cashflow periods detected")
                 recommendations.append("Improve working capital management")
 
         if employees > 20:
-            insights.append("👥 Established workforce - good operational capacity")
+            insights.append("Established workforce - good operational capacity")
         elif employees > 5:
-            insights.append("👤 Growing team - positive sign")
+            insights.append("Growing team - positive sign")
         else:
             recommendations.append("Consider expanding workforce for growth")
 
@@ -652,7 +720,7 @@ class AIFinancialEngine:
         }
         overall = np.mean(list(scores.values()))
         status = "Excellent" if overall > 85 else "Good" if overall > 75 else "Moderate"
-        return f"""📊 **Business Health Assessment**
+        return f"""**Business Health Assessment**
 
 Overall Score: **{overall:.0f}/100** - {status}
 
@@ -670,7 +738,7 @@ The business shows {'strong' if overall > 80 else 'stable' if overall > 70 else 
     def _get_loan_response(self) -> str:
         eligibility = random.choice(['High', 'Good', 'Moderate'])
         amount = random.randint(25, 75)
-        return f"""💰 **Loan Eligibility Assessment**
+        return f"""**Loan Eligibility Assessment**
 
 **Eligibility Status:** {eligibility}
 **Estimated Amount:** ₹{amount} Lakh
@@ -696,15 +764,15 @@ Would you like me to explain any specific loan product? """
             ("Working Capital", random.choice(['Adequate', 'Tight', 'Strained'])),
             ("Compliance", random.choice(['Compliant', 'Needs Attention', 'Risk']))
         ]
-        response = "⚠️ **Risk Assessment Report**\n\n**Identified Risks:**\n"
+        response = "**Risk Assessment Report**\n\n**Identified Risks:**\n"
         for risk, level in risks:
-            emoji = "✅" if level in ['Low', 'Adequate', 'Compliant'] else "⚠️" if level in ['Moderate', 'Tight', 'Needs Attention'] else "🚨"
+            emoji = "[OK]" if level in ['Low', 'Adequate', 'Compliant'] else "[WARNING]" if level in ['Moderate', 'Tight', 'Needs Attention'] else "[CRITICAL]"
             response += f"\n• {emoji} {risk}: {level}"
         response += f"\n\n**AI Recommendations:**\n• Diversify customer base\n• Build cash reserves\n• Optimize inventory\n\n**Risk Score:** {random.randint(20, 80)}/100"
         return response
 
     def _get_improvement_response(self) -> str:
-        return """🚀 **Growth & Improvement Plan**
+        return """**Growth & Improvement Plan**
 
 **AI-Generated Recommendations:**
 
@@ -735,7 +803,7 @@ Would you like me to explain any specific loan product? """
 Shall I create a detailed action plan for any specific area? """
 
     def _get_document_response(self) -> str:
-        return """📋 **Document Analysis Summary**
+        return """**Document Analysis Summary**
 
 **Extracted Information:**
 • Business Type: Manufacturing
