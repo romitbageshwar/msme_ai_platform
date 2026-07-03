@@ -723,6 +723,23 @@ if 'page' not in st.session_state:
     st.session_state.page = "Dashboard"
 
 # ------------------ SIDEBAR NAVIGATION ------------------
+with st.sidebar.expander("📤 Upload Data"):
+    st.markdown("Replace sample data with your own CSV files.")
+    business_file = st.file_uploader("Businesses CSV", type=['csv'], key="biz_csv")
+    apps_file = st.file_uploader("Applications CSV (optional)", type=['csv'], key="apps_csv")
+    alerts_file = st.file_uploader("Alerts CSV (optional)", type=['csv'], key="alerts_csv")
+    if st.button("Load Data from CSV"):
+        if business_file:
+            from data_utils import load_businesses_from_csv, load_applications_from_csv, load_alerts_from_csv
+            st.session_state.businesses = load_businesses_from_csv(business_file)
+            if apps_file:
+                st.session_state.applications = load_applications_from_csv(apps_file)
+            if alerts_file:
+                st.session_state.alerts = load_alerts_from_csv(alerts_file)
+            st.success("✅ Data loaded successfully!")
+            st.rerun()
+        else:
+            st.warning("Please upload at least the Business CSV.")
 with st.sidebar:
     st.markdown("### 🧠 **AI Finance**")
     st.caption("Intelligent MSME Assessment")
