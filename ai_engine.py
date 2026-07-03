@@ -38,12 +38,12 @@ class AIFinancialEngine:
         text = emoji_pattern.sub(r'', text)
         # Replace common special characters
         replacements = {
-            '→': '->',
-             '•': '-',
+    '→': '->',
+    '•': '-',
     '₹': 'Rs.',
     '–': '-',
     '—': '-',
-            '✓': '[OK]',
+    '✓': '[OK]',
             '⚠️': '[WARNING]',
             '✅': '[OK]',
             '📊': '[DATA]',
