@@ -723,23 +723,47 @@ if 'page' not in st.session_state:
     st.session_state.page = "Dashboard"
 
 # ------------------ SIDEBAR NAVIGATION ------------------
-with st.sidebar.expander("📤 Upload Data"):
-    st.markdown("Replace sample data with your own CSV files.")
-    business_file = st.file_uploader("Businesses CSV", type=['csv'], key="biz_csv")
+# Inside sidebar, after the navigation buttons
+with st.sidebar.expander("📤 Upload & Process Data", expanded=False):
+    st.markdown("Upload your CSV files to replace sample data.")
+    business_file = st.file_uploader("Businesses CSV (required)", type=['csv'], key="biz_csv")
     apps_file = st.file_uploader("Applications CSV (optional)", type=['csv'], key="apps_csv")
     alerts_file = st.file_uploader("Alerts CSV (optional)", type=['csv'], key="alerts_csv")
-    if st.button("Load Data from CSV"):
+    
+    if st.button("🚀 Load & Process Data", use_container_width=True):
         if business_file:
             from data_utils import load_businesses_from_csv, load_applications_from_csv, load_alerts_from_csv
-            st.session_state.businesses = load_businesses_from_csv(business_file)
-            if apps_file:
-                st.session_state.applications = load_applications_from_csv(apps_file)
-            if alerts_file:
-                st.session_state.alerts = load_alerts_from_csv(alerts_file)
-            st.success("✅ Data loaded successfully!")
+            # Load data
+            businesses = load_businesses_from_csv(business_file)
+            apps = load_applications_from_csv(apps_file) if apps_file else generate_sample_applications()
+            alerts = load_alerts_from_csv(alerts_file) if alerts_file else generate_sample_alerts()
+            
+            # Store in session state
+            st.session_state.businesses = businesses
+            st.session_state.applications = apps
+            st.session_state.alerts = alerts
+            
+            # Run AI analysis on each business (if scores are missing, compute them)
+            ai = st.session_state.ai_engine
+            for biz in businesses:
+                # If score is missing or 0, let AI compute it
+                if biz.get('score', 0) == 0:
+                    # Prepare business data for AI
+                    biz_data = {
+                        'revenue': biz.get('revenue', []),
+                        'cashflow': biz.get('cashflow', []),
+                        'employees': biz.get('employees', 5),
+                        'gst_score': biz.get('gst_score', 70)
+                    }
+                    insights = ai.generate_business_insights(biz_data)
+                    biz['score'] = insights['overall_score']
+                    biz['gst_score'] = insights['dimensions']['GST Compliance']
+                    # You can also store other insights if needed
+            
+            st.success(f"✅ Loaded {len(businesses)} businesses, {len(apps)} applications, {len(alerts)} alerts. AI analysis complete!")
             st.rerun()
         else:
-            st.warning("Please upload at least the Business CSV.")
+            st.warning("Please upload at least the Businesses CSV.")
 with st.sidebar:
     st.markdown("### 🧠 **AI Finance**")
     st.caption("Intelligent MSME Assessment")
