@@ -1,17 +1,16 @@
 """
 Data utilities for MSME Financial Health Platform
 - Generate sample data for demo
-- Load data from CSV uploads (businesses, applications, alerts)
+- Load data from CSV uploads (businesses, applications)
 - Convert CSV rows into internal dictionary format
 """
 
 import random
-import re  # <-- added missing import
+import re  # <-- fixed import
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Union
-import json
 
 # ---------- SAMPLE DATA GENERATORS ----------
 def generate_sample_businesses() -> List[Dict[str, Any]]:
@@ -130,7 +129,6 @@ def generate_sample_alerts() -> List[Dict[str, Any]]:
     ]
 
 # ---------- CSV LOADERS ----------
-
 def load_businesses_from_csv(file) -> List[Dict[str, Any]]:
     """
     Load business data from a CSV file.
@@ -142,10 +140,8 @@ def load_businesses_from_csv(file) -> List[Dict[str, Any]]:
     df = pd.read_csv(file)
     businesses = []
     for _, row in df.iterrows():
-        # Parse revenue and cashflow as lists of floats
         revenue = _parse_list(row.get('revenue', ''))
         cashflow = _parse_list(row.get('cashflow', ''))
-        # If not provided, generate some default trend
         if not revenue:
             revenue = list(np.random.randint(10, 50, 12))
         if not cashflow:
@@ -172,10 +168,7 @@ def load_businesses_from_csv(file) -> List[Dict[str, Any]]:
     return businesses
 
 def load_applications_from_csv(file) -> List[Dict[str, Any]]:
-    """
-    Load loan applications from CSV.
-    Expected columns: id, business, gstin, amount, score, status, date
-    """
+    """Load loan applications from CSV."""
     df = pd.read_csv(file)
     apps = []
     for _, row in df.iterrows():
@@ -192,10 +185,7 @@ def load_applications_from_csv(file) -> List[Dict[str, Any]]:
     return apps
 
 def load_alerts_from_csv(file) -> List[Dict[str, Any]]:
-    """
-    Load alerts from CSV.
-    Expected columns: time, title, desc, priority
-    """
+    """Load alerts from CSV (optional)."""
     df = pd.read_csv(file)
     alerts = []
     for _, row in df.iterrows():
@@ -216,7 +206,6 @@ def _parse_list(value: Union[str, List, None]) -> List[float]:
     if isinstance(value, list):
         return [float(v) for v in value]
     if isinstance(value, str):
-        # Try to split by comma, semicolon, or whitespace
         parts = re.split(r'[;,]\s*', value)
         if len(parts) == 1 and ' ' in parts[0]:
             parts = parts[0].split()
@@ -263,17 +252,3 @@ def save_sample_data_to_csv(businesses_file="data/sample_businesses.csv",
         writer.writerow(['time','title','desc','priority'])
         for a in alerts:
             writer.writerow([a['time'], a['title'], a['desc'], a['priority']])
-
-# ---------- LOAD DATA FROM ANY SOURCE (unified) ----------
-def load_data_from_csv_files(business_file, apps_file=None, alerts_file=None):
-    """Load all data from CSV files at once."""
-    businesses = load_businesses_from_csv(business_file)
-    apps = load_applications_from_csv(apps_file) if apps_file else generate_sample_applications()
-    alerts = load_alerts_from_csv(alerts_file) if alerts_file else generate_sample_alerts()
-    return businesses, apps, alerts
-
-# ---------- SAMPLE USAGE ----------
-if __name__ == "__main__":
-    # Save sample data to CSV (for templates)
-    save_sample_data_to_csv()
-    print("Sample data exported to CSV files in 'data/' folder.")
