@@ -29,7 +29,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- Custom CSS (unchanged) ---
+# --- Custom CSS ---
 st.markdown("""
 <style>
     .stApp { background: #f0f4f8; }
@@ -327,29 +327,29 @@ if page == "Dashboard":
         business = next(b for b in st.session_state.businesses if b['name'] == selected_name)
         st.session_state.selected_business = business
         
-col1, col2, col3, col4 = st.columns(4)
-with col1:
-    st.markdown(f"""
-    <div class="metric-card">
-        <div style="font-size:0.8rem;color:#718096;">Health Score</div>
-        <div style="font-size:2.5rem;font-weight:700;color:{'#00b894' if business['score']>=80 else '#fdcb6e' if business['score']>=70 else '#e17055'};">{business['score']}</div>
-        <div>{'Excellent' if business['score']>=80 else 'Good' if business['score']>=70 else 'Moderate'}</div>
-    </div>
-    """, unsafe_allow_html=True)
-with col2:
-    # Safe growth calculation with zero check
-    rev_start = business['revenue'][0]
-    rev_end = business['revenue'][-1]
-    if rev_start != 0:
-        growth_pct = ((rev_end - rev_start) / rev_start * 100)
-        growth_str = f"{growth_pct:.1f}%"
-    else:
-        growth_str = "N/A"
-    st.metric("Revenue (Annual)", f"₹{np.mean(business['revenue'])*12/100000:.1f} Lakh", growth_str)
-with col3:
-    st.metric("Employees", business['employees'], "↑ 4%")
-with col4:
-    st.metric("Loan Suitability", "High" if business['score']>=80 else "Moderate", "Pre-approved" if business['score']>=80 else "")
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.markdown(f"""
+            <div class="metric-card">
+                <div style="font-size:0.8rem;color:#718096;">Health Score</div>
+                <div style="font-size:2.5rem;font-weight:700;color:{'#00b894' if business['score']>=80 else '#fdcb6e' if business['score']>=70 else '#e17055'};">{business['score']}</div>
+                <div>{'Excellent' if business['score']>=80 else 'Good' if business['score']>=70 else 'Moderate'}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with col2:
+            # Safe growth calculation with zero check
+            rev_start = business['revenue'][0]
+            rev_end = business['revenue'][-1]
+            if rev_start != 0:
+                growth_pct = ((rev_end - rev_start) / rev_start * 100)
+                growth_str = f"{growth_pct:.1f}%"
+            else:
+                growth_str = "N/A"
+            st.metric("Revenue (Annual)", f"₹{np.mean(business['revenue'])*12/100000:.1f} Lakh", growth_str)
+        with col3:
+            st.metric("Employees", business['employees'], "↑ 4%")
+        with col4:
+            st.metric("Loan Suitability", "High" if business['score']>=80 else "Moderate", "Pre-approved" if business['score']>=80 else "")
         
         col_profile, col_score = st.columns([2,1])
         with col_profile:
@@ -535,12 +535,11 @@ elif page == "Search":
         else:
             st.info("No businesses found")
 
-# ======================== APPLICATIONS (UPDATED WITH CSV UPLOAD) ========================
+# ======================== APPLICATIONS ========================
 elif page == "Applications":
     st.title("📋 Loan Applications")
     st.caption("Review, process, and create new applications with CSV data uploads")
     
-    # ---- Existing Applications Table ----
     col1, col2, col3, col4 = st.columns([2,1,1,1])
     with col1:
         status_filter = st.selectbox("Filter by Status", ["All", "Pending Review", "Approved", "Rejected", "Under Verification"])
@@ -578,7 +577,6 @@ elif page == "Applications":
                     st.info(f"Processing application {app['id']} ...")
             st.markdown("---")
     
-    # ---- Create New Application with CSV Data ----
     with st.expander("➕ Create New Application with CSV Data", expanded=False):
         st.markdown("""
         **Fill in business details and upload CSV files for each data source.**
@@ -604,7 +602,6 @@ elif page == "Applications":
             utility_csv = st.file_uploader("Utility Payments (optional, CSV)", type=['csv'], key="utility_csv")
         
         if st.button("Submit Application with CSVs"):
-            # Gather uploaded CSVs
             csv_files = {
                 'gst': gst_csv,
                 'bank_statement': bank_csv,
@@ -618,7 +615,6 @@ elif page == "Applications":
             if not uploaded:
                 st.error("Please upload at least one CSV file.")
             else:
-                # Read CSV files into DataFrames
                 dataframes = {}
                 for src, file in uploaded.items():
                     try:
@@ -628,12 +624,10 @@ elif page == "Applications":
                         st.error(f"Error reading {src} CSV: {e}")
                         st.stop()
                 
-                # Process with AI
                 ai = st.session_state.ai_engine
                 result = ai.process_csv_documents(dataframes)
                 health_card = result['health_card']
                 
-                # Create application record
                 app_id = f"APP-{datetime.now().strftime('%Y%m%d')}-{random.randint(100,999)}"
                 new_app = {
                     "id": app_id,
@@ -646,11 +640,9 @@ elif page == "Applications":
                 }
                 st.session_state.applications.append(new_app)
                 
-                # Store health card
                 health_card['business_name'] = name if name else "Unknown MSME"
                 st.session_state.health_cards[name if name else "Unknown MSME"] = health_card
                 
-                # Also add to businesses if not exists
                 existing = [b for b in st.session_state.businesses if b['name'] == (name if name else "Unknown MSME")]
                 if not existing:
                     new_biz = {
@@ -672,7 +664,6 @@ elif page == "Applications":
                     }
                     st.session_state.businesses.append(new_biz)
                 
-                # Generate alerts
                 if health_card['overall_score'] < 60:
                     st.session_state.alerts.append({
                         "time": "Just now",
@@ -684,11 +675,9 @@ elif page == "Applications":
                 st.success(f"✅ Application {app_id} created with {len(uploaded)} data sources!")
                 st.balloons()
                 
-                # Display Health Card
                 st.markdown("### 📊 Full Financial Health Report")
                 display_health_card(health_card, name if name else "Unknown MSME", gstin, industry)
                 
-                # PDF Download
                 business_details = {
                     'name': name if name else "Unknown MSME",
                     'gstin': gstin if gstin else "N/A",
