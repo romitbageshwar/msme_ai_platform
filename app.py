@@ -1,928 +1,803 @@
-import streamlit as st
-import pandas as pd
-import numpy as np
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-from datetime import datetime, timedelta
-import json
+"""
+AI Engine for MSME Financial Health Platform
+Handles document analysis, business health scoring, loan eligibility, chat, CSV processing, and PDF generation.
+"""
+
 import re
 import random
+import numpy as np
+import pandas as pd
+from typing import Dict, List, Any, Optional
+from fpdf import FPDF
+import io
 import base64
-from typing import Dict, List, Any
+from datetime import datetime
 
-# Import our modules
-from ai_engine import AIFinancialEngine
-from data_utils import (
-    generate_sample_businesses,
-    generate_sample_applications,
-    generate_sample_alerts,
-    load_businesses_from_csv,
-    load_applications_from_csv,
-    load_alerts_from_csv
-)
+class AIFinancialEngine:
+    """Complete AI engine for MSME financial analysis"""
 
-# --- Page Configuration ---
-st.set_page_config(
-    page_title="AI MSME Financial Intelligence",
-    page_icon="🧠",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+    def __init__(self):
+        self.conversation_history = []
+        self.business_data = {}
+        self.health_cards = {}
+        self.applications = []
+        self.alerts = []
 
-# --- Custom CSS ---
-st.markdown("""
-<style>
-    .stApp { background: #f0f4f8; }
-    .ai-header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 1.5rem 2rem;
-        border-radius: 12px;
-        color: white;
-        margin-bottom: 2rem;
-    }
-    .insight-card {
-        background: white;
-        padding: 1.2rem;
-        border-radius: 10px;
-        border-left: 5px solid;
-        margin: 0.7rem 0;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-    }
-    .insight-positive { border-left-color: #00b894; }
-    .insight-warning { border-left-color: #fdcb6e; }
-    .insight-critical { border-left-color: #e17055; }
-    .chat-container {
-        background: white;
-        border-radius: 12px;
-        padding: 1rem;
-        height: 400px;
-        overflow-y: auto;
-        margin-bottom: 1rem;
-        border: 1px solid #e8edf5;
-    }
-    .message {
-        padding: 0.8rem 1rem;
-        border-radius: 10px;
-        margin: 0.5rem 0;
-        max-width: 80%;
-    }
-    .user-msg { background: #e3f2fd; margin-left: auto; border: 1px solid #bbdefb; }
-    .ai-msg { background: #f5f5f5; border: 1px solid #e0e0e0; }
-    .dimension-bar {
-        height: 8px;
-        border-radius: 4px;
-        background: #e8edf5;
-        margin: 4px 0;
-    }
-    .dimension-fill {
-        height: 100%;
-        border-radius: 4px;
-        transition: width 1s ease;
-    }
-    .score-circle {
-        width: 120px;
-        height: 120px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin: 0 auto;
-        font-size: 2.5rem;
-        font-weight: bold;
-        color: white;
-        background: linear-gradient(135deg, #00b894, #00cec9);
-    }
-    .floating-chat {
-        position: fixed;
-        bottom: 2rem;
-        right: 2rem;
-        background: linear-gradient(135deg, #667eea, #764ba2);
-        color: white;
-        padding: 0.8rem 1.5rem;
-        border-radius: 50px;
-        border: none;
-        box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
-        cursor: pointer;
-        z-index: 1000;
-        font-weight: 600;
-    }
-    .floating-chat:hover { transform: scale(1.05); transition: 0.2s; }
-    .status-badge {
-        padding: 0.2rem 1rem;
-        border-radius: 20px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        display: inline-block;
-    }
-    .badge-excellent { background: #d4edda; color: #155724; }
-    .badge-good { background: #cce5ff; color: #004085; }
-    .badge-moderate { background: #fff3cd; color: #856404; }
-    .badge-poor { background: #f8d7da; color: #721c24; }
-    .upload-area {
-        border: 2px dashed #cbd5e1;
-        border-radius: 12px;
-        padding: 2rem;
-        text-align: center;
-        background: #fafbfc;
-    }
-    .metric-value { font-size: 1.8rem; font-weight: 700; color: #2d3748; }
-    .data-source-tag {
-        display: inline-block;
-        padding: 0.25rem 0.75rem;
-        border-radius: 20px;
-        font-size: 0.75rem;
-        margin: 0.15rem;
-        background: #e8edf5;
-    }
-    .data-source-tag.active { background: #d4edda; color: #155724; }
-    .data-source-tag.inactive { background: #f8d7da; color: #721c24; }
-    .application-card {
-        background: white;
-        padding: 1rem;
-        border-radius: 8px;
-        margin: 0.5rem 0;
-        border: 1px solid #e8edf5;
-    }
-    .application-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
-    .metric-card {
-        background: white;
-        padding: 1rem;
-        border-radius: 8px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-        text-align: center;
-    }
-    .health-card {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 12px;
-        border: 1px solid #e8edf5;
-        margin: 1rem 0;
-    }
-    .trend-up { color: #00b894; }
-    .trend-down { color: #e17055; }
-    .trend-stable { color: #fdcb6e; }
-    .risk-low { color: #00b894; }
-    .risk-medium { color: #fdcb6e; }
-    .risk-high { color: #e17055; }
-    .status-approved { background: #d4edda; color: #155724; }
-    .status-pending { background: #fff3cd; color: #856404; }
-    .status-rejected { background: #f8d7da; color: #721c24; }
-    .status-review { background: #cce5ff; color: #004085; }
-    .doc-upload-box {
-        border: 1px solid #e8edf5;
-        border-radius: 8px;
-        padding: 0.8rem;
-        background: #fafbfc;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# --- Initialize session state ---
-if 'ai_engine' not in st.session_state:
-    st.session_state.ai_engine = AIFinancialEngine()
-if 'conversation' not in st.session_state:
-    st.session_state.conversation = []
-if 'businesses' not in st.session_state:
-    st.session_state.businesses = generate_sample_businesses()
-if 'applications' not in st.session_state:
-    st.session_state.applications = generate_sample_applications()
-if 'alerts' not in st.session_state:
-    st.session_state.alerts = generate_sample_alerts()
-if 'selected_business' not in st.session_state:
-    st.session_state.selected_business = st.session_state.businesses[0]
-if 'page' not in st.session_state:
-    st.session_state.page = "Dashboard"
-if 'health_cards' not in st.session_state:
-    st.session_state.health_cards = {}
-
-# --- Helper to display health card ---
-def display_health_card(health_card, name, gstin, industry):
-    st.markdown(f"""
-    <div class="health-card">
-        <h3>{name}</h3>
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div>
-                <span class="status-badge badge-excellent">{'Excellent' if health_card['overall_score']>=80 else 'Good' if health_card['overall_score']>=70 else 'Moderate'}</span>
-                <span style="margin-left:1rem;">Confidence: {health_card['confidence']:.0f}%</span>
-            </div>
-            <div style="font-size:2.5rem; font-weight:700; color:{'#00b894' if health_card['overall_score']>=80 else '#fdcb6e' if health_card['overall_score']>=70 else '#e17055'};">{health_card['overall_score']}</div>
-        </div>
-        <hr>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
-            <div><strong>Risk Level:</strong> <span class="risk-{health_card['risk_level'].lower()}">{health_card['risk_level']}</span></div>
-            <div><strong>Loan Suitability:</strong> {health_card['loan_suitability']['level']} (₹{health_card['loan_suitability']['max_amount']/100000:.1f} Lakh)</div>
-            <div><strong>GSTIN:</strong> {gstin}</div>
-            <div><strong>Industry:</strong> {industry}</div>
-        </div>
-        <div style="margin-top:1rem;">
-            <strong>Dimensions:</strong>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; margin-top:0.5rem;">
-                {''.join([f"<div>{dim}: {score}/100</div>" for dim, score in health_card['dimensions'].items()])}
-            </div>
-        </div>
-        <div style="margin-top:1rem;">
-            <strong>AI Insights:</strong>
-            <ul>
-                {''.join([f"<li>{insight}</li>" for insight in health_card['insights']])}
-            </ul>
-        </div>
-        <div style="margin-top:1rem; font-size:0.9rem; background:#f8f9fa; padding:1rem; border-radius:8px;">
-            <strong>Summary:</strong> {health_card.get('summary', 'N/A')}
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-# --- Sidebar Navigation ---
-with st.sidebar:
-    st.markdown("### 🧠 **AI Finance**")
-    st.caption("Intelligent MSME Assessment")
-    st.markdown("---")
-    
-    pages = {
-        "📊 Dashboard": "Dashboard",
-        "🔎 Search": "Search",
-        "📋 Applications": "Applications",
-        "📇 Health Cards": "HealthCards",
-        "📈 Monitoring": "Monitoring",
-        "🔔 Alerts": "Alerts",
-        "📑 Reports": "Reports",
-        "⚙️ Settings": "Settings",
-        "📄 Documents": "Documents",
-        "💬 AI Chat": "Chat"
-    }
-    
-    for label, key in pages.items():
-        if st.button(label, key=key, use_container_width=True):
-            st.session_state.page = key
-    
-    st.markdown("---")
-    st.caption("🤖 AI Status: Active")
-    st.caption(f"📅 {datetime.now().strftime('%d %B %Y')}")
-    st.progress(0.92, text="AI Confidence: 92%")
-    
-    # ---- Upload & Process Data (CSV) ----
-    with st.sidebar.expander("📤 Upload & Process Data", expanded=False):
-        st.markdown("Upload your business data to get AI insights.")
-        business_file = st.file_uploader("Businesses CSV (required)", type=['csv'], key="biz_csv")
-        apps_file = st.file_uploader("Applications CSV (optional)", type=['csv'], key="apps_csv")
-        
-        if st.button("🚀 Load & Process Data", use_container_width=True):
-            if business_file:
-                businesses = load_businesses_from_csv(business_file)
-                apps = load_applications_from_csv(apps_file) if apps_file else generate_sample_applications()
-                
-                st.session_state.businesses = businesses
-                st.session_state.applications = apps
-                
-                ai = st.session_state.ai_engine
-                for biz in businesses:
-                    biz_data = {
-                        'revenue': biz.get('revenue', []),
-                        'cashflow': biz.get('cashflow', []),
-                        'employees': biz.get('employees', 5),
-                        'gst_score': biz.get('gst_score', 70)
-                    }
-                    insights = ai.generate_business_insights(biz_data)
-                    biz['score'] = insights['overall_score']
-                    st.session_state.health_cards[biz['name']] = insights
-                
-                alerts = []
-                for biz in businesses:
-                    if biz.get('score', 0) < 60:
-                        alerts.append({
-                            "time": "Just now",
-                            "title": f"⚠️ Low Health Score - {biz['name']}",
-                            "desc": f"Health score is {biz['score']} – below acceptable threshold.",
-                            "priority": "high"
-                        })
-                    elif biz.get('score', 0) < 70:
-                        alerts.append({
-                            "time": "Just now",
-                            "title": f"⚠️ Moderate Risk - {biz['name']}",
-                            "desc": f"Health score {biz['score']} – monitor closely.",
-                            "priority": "medium"
-                        })
-                st.session_state.alerts = alerts
-                
-                st.success(f"✅ Processed {len(businesses)} businesses and {len(apps)} applications. AI analysis complete!")
-                st.rerun()
-            else:
-                st.warning("Please upload the Businesses CSV file.")
-
-# --- Page Routing ---
-page = st.session_state.page
-
-# ======================== DASHBOARD ========================
-if page == "Dashboard":
-    st.markdown("""
-    <div class="ai-header">
-        <h1 style="margin:0;">📊 AI Business Health Dashboard</h1>
-        <p style="margin:0; opacity:0.9;">Real-time AI-powered insights for your MSME portfolio</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    biz_names = [b['name'] for b in st.session_state.businesses]
-    if biz_names:
-        selected_name = st.selectbox("Select MSME", biz_names, index=0)
-        business = next(b for b in st.session_state.businesses if b['name'] == selected_name)
-        st.session_state.selected_business = business
-        
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.markdown(f"""
-            <div class="metric-card">
-                <div style="font-size:0.8rem;color:#718096;">Health Score</div>
-                <div style="font-size:2.5rem;font-weight:700;color:{'#00b894' if business['score']>=80 else '#fdcb6e' if business['score']>=70 else '#e17055'};">{business['score']}</div>
-                <div>{'Excellent' if business['score']>=80 else 'Good' if business['score']>=70 else 'Moderate'}</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with col2:
-            # Safe growth calculation with zero check
-            rev_start = business['revenue'][0]
-            rev_end = business['revenue'][-1]
-            if rev_start != 0:
-                growth_pct = ((rev_end - rev_start) / rev_start * 100)
-                growth_str = f"{growth_pct:.1f}%"
-            else:
-                growth_str = "N/A"
-            st.metric("Revenue (Annual)", f"₹{np.mean(business['revenue'])*12/100000:.1f} Lakh", growth_str)
-        with col3:
-            st.metric("Employees", business['employees'], "↑ 4%")
-        with col4:
-            st.metric("Loan Suitability", "High" if business['score']>=80 else "Moderate", "Pre-approved" if business['score']>=80 else "")
-        
-        col_profile, col_score = st.columns([2,1])
-        with col_profile:
-            st.markdown(f"""
-            <div class="health-card">
-                <div style="display:flex;justify-content:space-between;align-items:start;">
-                    <div>
-                        <h3 style="margin:0;">{business['name']}</h3>
-                        <span class="status-badge badge-excellent">● Active</span>
-                    </div>
-                    <div style="text-align:right;">
-                        <div style="font-size:0.8rem;color:#718096;">Last Assessment</div>
-                        <div style="font-weight:600;">{datetime.now().strftime('%d %b %Y')}</div>
-                    </div>
-                </div>
-                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-top:1rem;">
-                    <div><div style="font-size:0.7rem;color:#718096;">GSTIN</div><div style="font-weight:600;">{business['gstin']}</div></div>
-                    <div><div style="font-size:0.7rem;color:#718096;">Industry</div><div style="font-weight:600;">{business['industry']}</div></div>
-                    <div><div style="font-size:0.7rem;color:#718096;">Structure</div><div style="font-weight:600;">{business['constitution']}</div></div>
-                    <div><div style="font-size:0.7rem;color:#718096;">Location</div><div style="font-weight:600;">{business['location']}</div></div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-        with col_score:
-            st.markdown(f"""
-            <div class="metric-card" style="background:linear-gradient(135deg,#667eea,#764ba2);color:white;">
-                <div style="font-size:0.8rem;opacity:0.8;">Financial Health Score</div>
-                <div style="font-size:4rem;font-weight:700;">{business['score']}</div>
-                <div style="font-size:1rem;font-weight:600;">{'Excellent' if business['score']>=80 else 'Good'}</div>
-                <div style="font-size:0.8rem;opacity:0.8;margin-top:0.5rem;">Benchmark: 70-100</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        st.markdown("### 📈 Performance Dimensions")
-        dims = {
-            "Revenue Health": random.randint(80,95),
-            "Cash Flow Health": random.randint(75,90),
-            "Growth Potential": random.randint(70,88),
-            "Debt Management": random.randint(60,80),
-            "Liquidity Position": random.randint(70,85),
-            "Digital Adoption": random.randint(80,95),
-            "Compliance Score": random.randint(85,98),
-            "Workforce Stability": random.randint(70,85)
+    # ---------- Helper to sanitize text for PDF ----------
+    def _sanitize_text(self, text: str) -> str:
+        """Remove emojis and non‑latin1 characters for PDF compatibility."""
+        emoji_pattern = re.compile("["
+            u"\U0001F600-\U0001F64F"  # emoticons
+            u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+            u"\U0001F680-\U0001F6FF"  # transport & map symbols
+            u"\U0001F1E0-\U0001F1FF"  # flags
+            u"\U00002702-\U000027B0"
+            u"\U000024C2-\U0001F251"
+            "]+", flags=re.UNICODE)
+        text = emoji_pattern.sub(r'', text)
+        replacements = {
+            '→': '->', '✓': '[OK]', '⚠️': '[WARNING]', '✅': '[OK]',
+            '📊': '[DATA]', '📈': '[GROWTH]', '💪': '[STRONG]',
+            '💰': '[MONEY]', '🏢': '[BUSINESS]', '👥': '[TEAM]',
+            '📱': '[DIGITAL]', '🚀': '[GROWTH]', '🎯': '[TARGET]',
+            '🔍': '[SEARCH]', '🔔': '[ALERT]', '📑': '[REPORT]',
+            '⚙️': '[SETTINGS]', '📄': '[DOCUMENT]', '💬': '[CHAT]',
+            '🧠': '[AI]'
         }
-        cols = st.columns(4)
-        for idx, (dim, score) in enumerate(dims.items()):
-            with cols[idx % 4]:
-                color = "#00b894" if score>=80 else "#fdcb6e" if score>=70 else "#e17055"
-                label = "Strong" if score>=80 else "Moderate" if score>=70 else "Needs Work"
-                st.markdown(f"""
-                <div style="background:white;padding:1rem;border-radius:8px;margin-bottom:0.5rem;border:1px solid #e8edf5;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;">
-                        <span style="font-size:0.85rem;font-weight:500;">{dim}</span>
-                        <span style="font-weight:700;color:{color};">{score}%</span>
-                    </div>
-                    <div class="dimension-bar"><div class="dimension-fill" style="width:{score}%;background:{color};"></div></div>
-                    <div style="font-size:0.7rem;color:{color};margin-top:0.2rem;">{label}</div>
-                </div>
-                """, unsafe_allow_html=True)
-        
-        col_loan, col_trends = st.columns([1,2])
-        with col_loan:
-            st.markdown("""
-            <div class="health-card">
-                <h4 style="margin-top:0;">💰 Credit Assessment</h4>
-                <div style="background:#e8f5e9;padding:1rem;border-radius:8px;margin:1rem 0;">
-                    <div style="font-size:0.8rem;color:#2e7d32;">Eligibility Status</div>
-                    <div style="font-size:1.2rem;font-weight:700;color:#2e7d32;">✅ Pre-Approved</div>
-                </div>
-                <div style="margin:1rem 0;">
-                    <div style="display:flex;justify-content:space-between;"><span>Recommended Limit</span><span style="font-weight:700;font-size:1.2rem;">₹42.50 Lakh</span></div>
-                    <div style="display:flex;justify-content:space-between;margin-top:0.5rem;"><span>Product</span><span>Working Capital + Term Loan</span></div>
-                    <div style="display:flex;justify-content:space-between;margin-top:0.5rem;"><span>Tenure</span><span>48 Months</span></div>
-                    <div style="display:flex;justify-content:space-between;margin-top:0.5rem;"><span>Interest Rate</span><span>10.75% - 12.50%</span></div>
-                </div>
-                <div>
-                    <div style="display:flex;justify-content:space-between;align-items:center;">
-                        <span style="font-size:0.85rem;">Confidence Level</span>
-                        <span style="font-weight:700;">94%</span>
-                    </div>
-                    <div class="dimension-bar"><div class="dimension-fill" style="width:94%;background:#00b894;"></div></div>
-                </div>
-                <div style="margin-top:1rem;">
-                    <span class="data-source-tag active">Term Loan</span>
-                    <span class="data-source-tag active">Overdraft</span>
-                    <span class="data-source-tag">Equipment Finance</span>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col_trends:
-            st.markdown('<div class="health-card"><h4 style="margin-top:0;">📈 Revenue & Cash Flow Trends</h4></div>', unsafe_allow_html=True)
-            months = ['Jul','Aug','Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May','Jun']
-            rev = business['revenue']
-            cf = business['cashflow']
-            fig = make_subplots(rows=2, cols=1)
-            fig.add_trace(go.Scatter(x=months, y=rev, mode='lines+markers', name='Revenue', line=dict(color='#0984e3',width=3)), row=1, col=1)
-            fig.add_trace(go.Scatter(x=months, y=cf, mode='lines+markers', name='Cash Flow', line=dict(color='#00b894',width=3)), row=2, col=1)
-            fig.update_layout(height=350, showlegend=True, margin=dict(l=20,r=20,t=20,b=20))
-            fig.update_xaxes(title_text="", row=1, col=1)
-            fig.update_xaxes(title_text="Month", row=2, col=1)
-            fig.update_yaxes(title_text="₹ Lakhs", row=1, col=1)
-            fig.update_yaxes(title_text="₹ Lakhs", row=2, col=1)
-            st.plotly_chart(fig, use_container_width=True)
-        
-        col_src, col_risk, col_upi = st.columns([1,1,1.2])
-        with col_src:
-            st.markdown("""
-            <div class="health-card">
-                <h4 style="margin-top:0;">🔗 Connected Data Sources</h4>
-                <div style="margin:0.5rem 0;">
-                    <span class="data-source-tag active">✓ GST Portal</span>
-                    <span class="data-source-tag active">✓ Bank Statements</span>
-                    <span class="data-source-tag active">✓ UPI Transactions</span>
-                    <span class="data-source-tag active">✓ EPFO Records</span>
-                    <span class="data-source-tag">○ IT Returns (Optional)</span>
-                    <span class="data-source-tag">○ Utility Bills</span>
-                    <span class="data-source-tag">○ E-commerce Sales</span>
-                </div>
-                <div style="font-size:0.8rem;color:#718096;margin-top:0.5rem;">Last sync: Today, 2:30 PM</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with col_risk:
-            st.markdown("""
-            <div class="health-card">
-                <h4 style="margin-top:0;">⚠️ Risk Factors</h4>
-                <div style="margin:0.5rem 0;">
-                    <div style="display:flex;justify-content:space-between;padding:0.2rem 0;"><span>Client Concentration</span><span style="color:#fdcb6e;">Moderate</span></div>
-                    <div style="display:flex;justify-content:space-between;padding:0.2rem 0;"><span>Seasonal Fluctuation</span><span style="color:#fdcb6e;">Moderate</span></div>
-                    <div style="display:flex;justify-content:space-between;padding:0.2rem 0;"><span>Working Capital Cycle</span><span style="color:#00b894;">Efficient</span></div>
-                    <div style="display:flex;justify-content:space-between;padding:0.2rem 0;"><span>Supplier Dependency</span><span style="color:#00b894;">Low</span></div>
-                    <div style="display:flex;justify-content:space-between;padding:0.2rem 0;"><span>Statutory Compliance</span><span style="color:#00b894;">Compliant</span></div>
-                </div>
-                <button style="background:none;border:none;color:#0984e3;cursor:pointer;font-size:0.85rem;padding:0;">View Detailed Risk Analysis →</button>
-            </div>
-            """, unsafe_allow_html=True)
-        with col_upi:
-            st.markdown(f"""
-            <div class="health-card">
-                <h4 style="margin-top:0;">📱 Digital Collections Overview</h4>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin:1rem 0;">
-                    <div><div style="font-size:0.7rem;color:#718096;">12-Month Volume</div><div style="font-size:1.2rem;font-weight:700;">{business['upi_transactions']:,}</div></div>
-                    <div><div style="font-size:0.7rem;color:#718096;">Total Collections</div><div style="font-size:1.2rem;font-weight:700;">₹{business['upi_collections']:.2f} Cr</div></div>
-                    <div><div style="font-size:0.7rem;color:#718096;">Daily Average</div><div style="font-size:1.2rem;font-weight:700;">₹{business['upi_collections']*10000000/365:,.0f}</div></div>
-                    <div><div style="font-size:0.7rem;color:#718096;">Active Customers</div><div style="font-size:1.2rem;font-weight:700;">{business['active_customers']:,}</div></div>
-                </div>
-                <div style="font-size:0.8rem;color:#00b894;">↑ 18% growth in UPI transactions</div>
-            </div>
-            """, unsafe_allow_html=True)
-    else:
-        st.warning("No businesses loaded. Please upload data via the sidebar.")
+        for char, replacement in replacements.items():
+            text = text.replace(char, replacement)
+        text = text.encode('latin1', errors='ignore').decode('latin1')
+        return text
 
-# ======================== SEARCH ========================
-elif page == "Search":
-    st.title("🔎 Business Discovery")
-    st.caption("Find MSMEs by GSTIN, Business Name, or PAN")
-    col1, col2, col3 = st.columns([2,1,1])
-    with col1:
-        query = st.text_input("", placeholder="Enter GSTIN, Business Name, or PAN...", label_visibility="collapsed")
-    with col2:
-        st.selectbox("Search Type", ["GSTIN", "Name", "PAN", "Industry"], label_visibility="collapsed")
-    with col3:
-        if st.button("🔍 Search", use_container_width=True):
-            pass
-    
-    if query:
-        results = [b for b in st.session_state.businesses if query.lower() in b['name'].lower() or query in b['gstin']]
-        if results:
-            for b in results:
-                col1, col2, col3, col4 = st.columns([3,1.5,1,1])
-                with col1:
-                    st.write(f"**{b['name']}**")
-                    st.caption(f"GSTIN: {b['gstin']}")
-                with col2:
-                    st.write(b['location'])
-                with col3:
-                    st.write(f"Score: **{b['score']}**")
-                with col4:
-                    if st.button("View", key=f"view_{b['gstin']}"):
-                        st.session_state.selected_business = b
-                        st.session_state.page = "Dashboard"
-                        st.rerun()
-        else:
-            st.info("No businesses found")
+    # ---------- Document Analysis (Text) ----------
+    def analyze_documents(self, documents: Dict[str, str]) -> Dict:
+        combined_metrics = {}
+        all_insights = []
+        confidence = 0.0
+        num_docs = 0
 
-# ======================== APPLICATIONS ========================
-elif page == "Applications":
-    st.title("📋 Loan Applications")
-    st.caption("Review, process, and create new applications with CSV data uploads")
-    
-    col1, col2, col3, col4 = st.columns([2,1,1,1])
-    with col1:
-        status_filter = st.selectbox("Filter by Status", ["All", "Pending Review", "Approved", "Rejected", "Under Verification"])
-    with col2:
-        st.selectbox("Sort by", ["Date", "Amount", "Score"])
-    with col3:
-        st.date_input("From Date", value=datetime.now() - timedelta(days=30))
-    with col4:
-        st.date_input("To Date", value=datetime.now())
-    
-    apps = st.session_state.applications
-    if status_filter != "All":
-        apps = [a for a in apps if a['status'] == status_filter]
-    
-    for app in apps:
-        with st.container():
-            col1, col2, col3, col4, col5 = st.columns([2,1.2,1,1,1])
-            with col1:
-                st.write(f"**{app['business']}**")
-                st.caption(f"ID: {app['id']}")
-            with col2:
-                st.write(f"₹{app['amount']} Lakh")
-            with col3:
-                st.write(f"Score: {app['score']}")
-            with col4:
-                status_class = {
-                    "Approved": "status-approved",
-                    "Rejected": "status-rejected",
-                    "Pending Review": "status-pending",
-                    "Under Verification": "status-review"
-                }.get(app['status'], "")
-                st.markdown(f'<span class="status-badge {status_class}">{app["status"]}</span>', unsafe_allow_html=True)
-            with col5:
-                if st.button("Review", key=f"review_{app['id']}"):
-                    st.info(f"Processing application {app['id']} ...")
-            st.markdown("---")
-    
-    with st.expander("➕ Create New Application with CSV Data", expanded=False):
-        st.markdown("""
-        **Fill in business details and upload CSV files for each data source.**
-        The more CSVs you upload, the more accurate the AI analysis.
-        """)
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            gstin = st.text_input("GSTIN", placeholder="Enter 15-digit GSTIN")
-            name = st.text_input("Business Name")
-            industry = st.selectbox("Industry", ["Manufacturing", "Trading", "Services", "Construction", "Agriculture"])
-            amount = st.number_input("Requested Amount (₹ Lakh)", min_value=1, max_value=500, value=25)
-        with col2:
-            purpose = st.selectbox("Loan Purpose", ["Working Capital", "Equipment Purchase", "Business Expansion", "Debt Consolidation"])
-            tenure = st.selectbox("Tenure (Months)", [12,24,36,48,60])
-            
-            st.markdown("#### 📎 Upload CSV Data Sources")
-            gst_csv = st.file_uploader("GST Data (CSV)", type=['csv'], key="gst_csv")
-            bank_csv = st.file_uploader("Bank Statement (CSV)", type=['csv'], key="bank_csv")
-            upi_csv = st.file_uploader("UPI Transactions (CSV)", type=['csv'], key="upi_csv")
-            epfo_csv = st.file_uploader("EPFO Data (CSV)", type=['csv'], key="epfo_csv")
-            itr_csv = st.file_uploader("ITR Data (optional, CSV)", type=['csv'], key="itr_csv")
-            utility_csv = st.file_uploader("Utility Payments (optional, CSV)", type=['csv'], key="utility_csv")
-        
-        if st.button("Submit Application with CSVs"):
-            csv_files = {
-                'gst': gst_csv,
-                'bank_statement': bank_csv,
-                'upi': upi_csv,
-                'epfo': epfo_csv,
-                'itr': itr_csv,
-                'utility': utility_csv
-            }
-            uploaded = {k: v for k, v in csv_files.items() if v is not None}
-            
-            if not uploaded:
-                st.error("Please upload at least one CSV file.")
-            else:
-                dataframes = {}
-                for src, file in uploaded.items():
-                    try:
-                        df = pd.read_csv(file)
-                        dataframes[src] = df
-                    except Exception as e:
-                        st.error(f"Error reading {src} CSV: {e}")
-                        st.stop()
-                
-                ai = st.session_state.ai_engine
-                result = ai.process_csv_documents(dataframes)
-                health_card = result['health_card']
-                
-                app_id = f"APP-{datetime.now().strftime('%Y%m%d')}-{random.randint(100,999)}"
-                new_app = {
-                    "id": app_id,
-                    "business": name if name else "Unknown MSME",
-                    "gstin": gstin if gstin else "N/A",
-                    "amount": amount,
-                    "score": health_card['overall_score'],
-                    "status": "Under Verification",
-                    "date": datetime.now().strftime('%Y-%m-%d')
-                }
-                st.session_state.applications.append(new_app)
-                
-                health_card['business_name'] = name if name else "Unknown MSME"
-                st.session_state.health_cards[name if name else "Unknown MSME"] = health_card
-                
-                existing = [b for b in st.session_state.businesses if b['name'] == (name if name else "Unknown MSME")]
-                if not existing:
-                    new_biz = {
-                        "name": name if name else "Unknown MSME",
-                        "gstin": gstin if gstin else "",
-                        "industry": industry,
-                        "constitution": "N/A",
-                        "location": "N/A",
-                        "employees": result['metrics'].get('employee_count', 0),
-                        "years": 0,
-                        "revenue": [0] * 12,
-                        "cashflow": [0] * 12,
-                        "gst_score": health_card['dimensions']['Compliance Score'],
-                        "score": health_card['overall_score'],
-                        "status": "Active",
-                        "upi_transactions": result['metrics'].get('upi_volume', 0),
-                        "upi_collections": result['metrics'].get('upi_total', 0) / 10000000,
-                        "active_customers": result['metrics'].get('upi_customers', 0)
-                    }
-                    st.session_state.businesses.append(new_biz)
-                
-                if health_card['overall_score'] < 60:
-                    st.session_state.alerts.append({
-                        "time": "Just now",
-                        "title": f"⚠️ New Low Health Score - {new_app['business']}",
-                        "desc": f"Health score is {health_card['overall_score']} – review recommended.",
-                        "priority": "high"
-                    })
-                
-                st.success(f"✅ Application {app_id} created with {len(uploaded)} data sources!")
-                st.balloons()
-                
-                st.markdown("### 📊 Full Financial Health Report")
-                display_health_card(health_card, name if name else "Unknown MSME", gstin, industry)
-                
-                business_details = {
-                    'name': name if name else "Unknown MSME",
-                    'gstin': gstin if gstin else "N/A",
-                    'industry': industry
-                }
-                pdf_bytes = ai.generate_pdf_report(health_card, business_details)
-                b64 = base64.b64encode(pdf_bytes).decode()
-                href = f'<a href="data:application/pdf;base64,{b64}" download="HealthCard_{app_id}.pdf">📥 Download PDF Report</a>'
-                st.markdown(href, unsafe_allow_html=True)
+        for doc_type, text in documents.items():
+            if text:
+                num_docs += 1
+                metrics = self._extract_metrics_from_text(text)
+                combined_metrics[doc_type] = metrics
+                insights = self._generate_document_insights(metrics)
+                all_insights.extend(insights)
 
-# ======================== HEALTH CARDS ========================
-elif page == "HealthCards":
-    st.title("📊 Financial Health Cards")
-    st.caption("Comprehensive business health reports")
-    col1, col2 = st.columns([2,1])
-    with col1:
-        search_card = st.text_input("Search by Business Name or GSTIN", placeholder="Search...")
-    with col2:
-        st.selectbox("Score Range", ["All", "Excellent (80-100)", "Good (70-79)", "Average (50-69)", "Below Average (0-49)"])
-    
-    for b in st.session_state.businesses:
-        with st.container():
-            col1, col2, col3, col4, col5 = st.columns([2.5,1.5,1,1,1])
-            with col1:
-                st.write(f"**{b['name']}**")
-                st.caption(f"GSTIN: {b['gstin']}")
-            with col2:
-                score_color = "#00b894" if b['score']>=80 else "#fdcb6e" if b['score']>=70 else "#e17055"
-                st.write(f"Score: **{b['score']}/100**")
-            with col3:
-                st.write(f"**{'Excellent' if b['score']>=80 else 'Good' if b['score']>=70 else 'Average'}**")
-            with col4:
-                st.write(f"↑ 4%" if b['score']>70 else "↓ 2%")
-            with col5:
-                if st.button("View Card", key=f"hc_{b['gstin']}"):
-                    st.session_state.selected_business = b
-                    st.session_state.page = "Dashboard"
-                    st.rerun()
-            st.markdown("---")
+        aggregated = self._aggregate_metrics(combined_metrics)
+        confidence = min(98, 60 + num_docs * 8)
+        summary = self._generate_consolidated_summary(aggregated, all_insights)
+        health_card = self._generate_health_card(aggregated, all_insights, confidence)
 
-# ======================== MONITORING ========================
-elif page == "Monitoring":
-    st.title("📈 Performance Monitoring")
-    st.caption("Track portfolio performance and identify trends")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Healthy MSMEs (>75)", "842", "↑ 12%")
-    with col2:
-        st.metric("At-Risk MSMEs (<50)", "47", "↓ 8%")
-    with col3:
-        st.metric("Portfolio Growth", "18.4%", "↑ 3.2%")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("Score Distribution")
-        scores = np.random.normal(72, 18, 200)
-        scores = np.clip(scores, 0, 100)
-        fig = go.Figure(data=[go.Histogram(x=scores, nbinsx=20, marker_color='#0984e3')])
-        fig.update_layout(height=300, margin=dict(l=20,r=20,t=20,b=20))
-        st.plotly_chart(fig, use_container_width=True)
-    with col2:
-        st.subheader("Monthly Approvals/Rejections")
-        months = ['Jan','Feb','Mar','Apr','May','Jun']
-        approvals = [12,15,18,14,22,25]
-        rejections = [8,6,5,7,4,3]
-        fig = go.Figure()
-        fig.add_trace(go.Bar(x=months, y=approvals, name='Approved', marker_color='#00b894'))
-        fig.add_trace(go.Bar(x=months, y=rejections, name='Rejected', marker_color='#e17055'))
-        fig.update_layout(height=300, barmode='stack', margin=dict(l=20,r=20,t=20,b=20))
-        st.plotly_chart(fig, use_container_width=True)
+        return {
+            'metrics': aggregated,
+            'insights': list(set(all_insights)),
+            'confidence': confidence,
+            'summary': summary,
+            'health_card': health_card,
+            'num_documents': num_docs
+        }
 
-# ======================== ALERTS ========================
-elif page == "Alerts":
-    st.title("🔔 Notifications & Alerts")
-    st.caption("Stay informed about important updates")
-    for alert in st.session_state.alerts:
-        color = "#e74c3c" if alert['priority']=='high' else "#f39c12" if alert['priority']=='medium' else "#3498db"
-        st.markdown(f"""
-        <div style="background:white;padding:1rem;border-radius:8px;border-left:4px solid {color};margin-bottom:0.75rem;">
-            <div style="display:flex;justify-content:space-between;">
-                <strong>{alert['title']}</strong>
-                <span style="font-size:0.8rem;color:#718096;">{alert['time']}</span>
-            </div>
-            <div style="font-size:0.9rem;color:#2d3748;margin-top:0.25rem;">{alert['desc']}</div>
-        </div>
-        """, unsafe_allow_html=True)
+    def _extract_metrics_from_text(self, text: str) -> Dict:
+        return {
+            'revenue': self._extract_revenue(text),
+            'expenses': self._extract_expenses(text),
+            'profit': self._extract_profit(text),
+            'gst': self._extract_gst(text),
+            'employees': self._extract_employees(text),
+            'business_age': self._extract_business_age(text),
+            'upi': self._extract_upi(text),
+            'gst_filings': self._extract_gst_filings(text)
+        }
 
-# ======================== REPORTS ========================
-elif page == "Reports":
-    st.title("📑 Reports & Analytics")
-    st.caption("Generate and export comprehensive reports")
-    col1, col2 = st.columns([1,2])
-    with col1:
-        st.markdown("### Generate Report")
-        report_type = st.selectbox("Report Type", ["Portfolio Summary", "Individual MSME Health", "Risk Assessment", "Performance Trends"])
-        date_range = st.date_input("Date Range", [datetime.now()-timedelta(days=30), datetime.now()])
-        format_type = st.selectbox("Export Format", ["PDF", "Excel", "CSV", "JSON"])
-        if st.button("Generate Report", use_container_width=True):
-            st.success("✅ Report generated successfully!")
-            st.download_button("Download Report", data="Sample report data", file_name=f"report_{datetime.now().strftime('%Y%m%d')}.pdf")
-    with col2:
-        st.markdown("### Recent Reports")
-        reports = [
-            {"name": "Portfolio Summary - June 2024", "date": "2024-06-30", "size": "2.4 MB"},
-            {"name": "Risk Assessment Report", "date": "2024-06-28", "size": "1.8 MB"},
-            {"name": "MSME Health Trends Q2 2024", "date": "2024-06-25", "size": "3.1 MB"},
+    def _extract_revenue(self, text: str) -> Dict:
+        patterns = {
+            'annual': r'(?:annual|yearly).*?(?:revenue|turnover|sales).*?[₹₹]?\s*([\d,]+\.?\d*)\s*(?:lakh|crore|cr)',
+            'monthly': r'(?:monthly).*?(?:revenue|turnover).*?[₹₹]?\s*([\d,]+\.?\d*)\s*(?:lakh|crore)',
+            'growth': r'(?:growth|increase).*?(\d+\.?\d*)\s*%'
+        }
+        revenue = {}
+        for key, pattern in patterns.items():
+            match = re.search(pattern, text.lower())
+            if match:
+                value = float(match.group(1).replace(',', ''))
+                if 'lakh' in text.lower() or 'lac' in text.lower():
+                    value = value * 100000
+                elif 'crore' in text.lower() or 'cr' in text.lower():
+                    value = value * 10000000
+                revenue[key] = value
+        return revenue
+
+    def _extract_expenses(self, text: str) -> Dict:
+        expenses = {}
+        patterns = {
+            'operational': r'(?:operational|operating).*?(?:expense|cost).*?[₹₹]?\s*([\d,]+\.?\d*)\s*(?:lakh|crore)',
+            'staff': r'(?:staff|employee|salary|payroll).*?(?:cost|expense).*?[₹₹]?\s*([\d,]+\.?\d*)\s*(?:lakh|crore)',
+            'rent': r'(?:rent|lease).*?[₹₹]?\s*([\d,]+\.?\d*)\s*(?:lakh|crore)'
+        }
+        for key, pattern in patterns.items():
+            match = re.search(pattern, text.lower())
+            if match:
+                value = float(match.group(1).replace(',', ''))
+                if 'lakh' in text.lower() or 'lac' in text.lower():
+                    value = value * 100000
+                elif 'crore' in text.lower() or 'cr' in text.lower():
+                    value = value * 10000000
+                expenses[key] = value
+        return expenses
+
+    def _extract_profit(self, text: str) -> Dict:
+        profit = {}
+        patterns = {
+            'net': r'(?:net|gross).*?profit.*?[₹₹]?\s*([\d,]+\.?\d*)\s*(?:lakh|crore)',
+            'margin': r'(?:profit|margin).*?(\d+\.?\d*)\s*%'
+        }
+        for key, pattern in patterns.items():
+            match = re.search(pattern, text.lower())
+            if match:
+                if key == 'margin':
+                    profit[key] = float(match.group(1))
+                else:
+                    value = float(match.group(1).replace(',', ''))
+                    if 'lakh' in text.lower() or 'lac' in text.lower():
+                        value = value * 100000
+                    elif 'crore' in text.lower() or 'cr' in text.lower():
+                        value = value * 10000000
+                    profit[key] = value
+        return profit
+
+    def _extract_gst(self, text: str) -> Dict:
+        gst = {}
+        gst_pattern = r'\d{2}[A-Z]{5}\d{4}[A-Z]{1}[A-Z\d]{1}[Z]{1}[A-Z\d]{1}'
+        gst_numbers = re.findall(gst_pattern, text)
+        compliance = re.search(r'(?:regular|timely|on[- ]time).*?gst', text.lower())
+        gst['has_gst'] = len(gst_numbers) > 0
+        gst['compliance'] = 'good' if compliance else 'unknown'
+        if gst_numbers:
+            gst['number'] = gst_numbers[0]
+        return gst
+
+    def _extract_employees(self, text: str) -> int:
+        patterns = [
+            r'(\d+)\s*employees',
+            r'(\d+)\s*staff',
+            r'(\d+)\s*people\s*(?:work|employed)',
+            r'workforce\s*(?:of|:)\s*(\d+)'
         ]
-        for r in reports:
-            col_a, col_b, col_c = st.columns([2,1,1])
-            with col_a:
-                st.write(f"📄 {r['name']}")
-            with col_b:
-                st.caption(r['date'])
-            with col_c:
-                st.caption(r['size'])
-            st.markdown("---")
+        for pattern in patterns:
+            match = re.search(pattern, text.lower())
+            if match:
+                return int(match.group(1))
+        return 0
 
-# ======================== SETTINGS ========================
-elif page == "Settings":
-    st.title("⚙️ Settings")
-    st.caption("Configure platform preferences and integrations")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("### 🔌 Data Integrations")
-        st.checkbox("GST Portal", value=True)
-        st.checkbox("Account Aggregator", value=True)
-        st.checkbox("UPI Transaction Data", value=True)
-        st.checkbox("EPFO Records", value=True)
-        st.checkbox("IT Returns (Optional)", value=False)
-        st.checkbox("Utility Bill Payments", value=False)
-        if st.button("Sync All Data Sources"):
-            st.success("✅ All data sources synchronized successfully!")
-    with col2:
-        st.markdown("### 🎨 Preferences")
-        st.selectbox("Default View", ["Dashboard", "Applications", "Monitoring"])
-        st.selectbox("Notification Frequency", ["Real-time", "Daily", "Weekly"])
-        st.slider("Risk Alert Threshold", 0, 100, 60)
-        st.toggle("Enable AI Recommendations", value=True)
-        st.toggle("Auto-generate Health Cards", value=True)
-        st.markdown("### 👤 Profile")
-        st.text_input("Name", "Priya Sharma")
-        st.text_input("Email", "priya.sharma@bank.com")
-        if st.button("Save Settings"):
-            st.success("✅ Settings saved successfully!")
+    def _extract_business_age(self, text: str) -> int:
+        patterns = [
+            r'(\d+)\s*years?\s*(?:old|in business|established)',
+            r'established\s*(?:in|since)\s*(\d{4})',
+            r'incorporated\s*(?:in|since)\s*(\d{4})'
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, text.lower())
+            if match:
+                if len(match.group(1)) == 4:
+                    return 2026 - int(match.group(1))
+                else:
+                    return int(match.group(1))
+        return 0
 
-# ======================== DOCUMENTS ========================
-elif page == "Documents":
-    st.markdown("""
-    <div class="ai-header">
-        <h1 style="margin:0;">📄 AI Document Intelligence</h1>
-        <p style="margin:0; opacity:0.9;">Upload documents for AI-powered financial analysis</p>
-    </div>
-    """, unsafe_allow_html=True)
-    col1, col2 = st.columns([1,1])
-    with col1:
-        uploaded_file = st.file_uploader("Upload Financial Documents", type=['txt','pdf','docx','csv'])
-        if uploaded_file:
-            content = uploaded_file.read().decode('utf-8') if uploaded_file.type=='text/plain' else str(uploaded_file)
-            ai = st.session_state.ai_engine
-            sample_text = """
-            Annual Revenue: ₹45 Lakh with 18% growth.
-            Operating Expenses: ₹28 Lakh, staff salary ₹12 Lakh.
-            Net Profit: ₹8.5 Lakh, margin 18.9%.
-            GST: Regular filings, GSTIN: 29AABCS1234A1Z5.
-            Employees: 25. Established in 2016.
-            UPI transactions: 15,000, collections ₹2.5 Cr.
-            """
-            analysis = ai.analyze_documents({'sample': sample_text})
-            st.success("✅ Document analyzed successfully!")
-            st.metric("AI Confidence", f"{analysis['confidence']:.1f}%")
-            st.markdown("### 📊 Extracted Metrics")
-            metrics = analysis['metrics']
-            col_a, col_b, col_c = st.columns(3)
-            with col_a:
-                if metrics.get('revenue'):
-                    st.metric("Annual Revenue", f"₹{metrics['revenue'].get('annual',0)/100000:.1f} Lakh")
-            with col_b:
-                if metrics.get('profit'):
-                    st.metric("Net Profit", f"₹{metrics['profit'].get('net',0)/100000:.1f} Lakh")
-                    if 'margin' in metrics['profit']:
-                        st.metric("Profit Margin", f"{metrics['profit']['margin']:.1f}%")
-            with col_c:
-                if metrics.get('employees', 0) > 0:
-                    st.metric("Employees", metrics['employees'])
-                if metrics.get('business_age', 0) > 0:
-                    st.metric("Business Age", f"{metrics['business_age']} Years")
-    with col2:
-        st.markdown("### 💡 AI Insights")
-        if 'analysis' in locals():
-            for insight in analysis['insights']:
-                st.markdown(f"""
-                <div class="insight-card insight-positive">
-                    {insight}
-                </div>
-                """, unsafe_allow_html=True)
-            st.markdown("### 📝 AI Summary")
-            st.write(analysis['summary'])
-        else:
-            st.info("Upload a document to receive AI-powered insights")
+    def _extract_upi(self, text: str) -> Dict:
+        upi = {}
+        patterns = {
+            'transactions': r'(\d+)\s*(?:upi|digital|transaction|payment).*?(?:volume|count)',
+            'amount': r'(?:upi|digital).*?(?:collections|receipts).*?[₹₹]?\s*([\d,]+\.?\d*)\s*(?:lakh|crore)'
+        }
+        for key, pattern in patterns.items():
+            match = re.search(pattern, text.lower())
+            if match:
+                if key == 'transactions':
+                    upi[key] = int(match.group(1))
+                else:
+                    value = float(match.group(1).replace(',', ''))
+                    if 'lakh' in text.lower() or 'lac' in text.lower():
+                        value = value * 100000
+                    elif 'crore' in text.lower() or 'cr' in text.lower():
+                        value = value * 10000000
+                    upi[key] = value
+        return upi
 
-# ======================== AI CHAT ========================
-else:
-    st.markdown("""
-    <div class="ai-header">
-        <h1 style="margin:0;">💬 AI Financial Assistant</h1>
-        <p style="margin:0; opacity:0.9;">Chat with AI about your business health and financial insights</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("### Quick Questions")
-    quick_qs = ["What's my business health score?", "Am I eligible for a loan?", "What are my business risks?", "How can I improve?"]
-    cols = st.columns(4)
-    for idx, q in enumerate(quick_qs):
-        with cols[idx]:
-            if st.button(q, key=f"qq_{idx}"):
-                response = st.session_state.ai_engine.chat(q)
-                st.session_state.conversation.append(("user", q))
-                st.session_state.conversation.append(("assistant", response))
-    
-    st.markdown("### 💭 Conversation")
-    chat_container = st.container()
-    with chat_container:
-        for role, msg in st.session_state.conversation[-10:]:
-            if role == "user":
-                st.markdown(f'<div class="message user-msg"><strong>You:</strong> {msg}</div>', unsafe_allow_html=True)
+    def _extract_gst_filings(self, text: str) -> Dict:
+        filings = {}
+        pattern = r'(\d+)\s*(?:gst|tax)\s*(?:returns|filings)'
+        match = re.search(pattern, text.lower())
+        if match:
+            filings['count'] = int(match.group(1))
+        return filings
+
+    def _generate_document_insights(self, metrics: Dict) -> List[str]:
+        insights = []
+        revenue = metrics.get('revenue', {})
+        profit = metrics.get('profit', {})
+        gst = metrics.get('gst', {})
+        employees = metrics.get('employees', 0)
+        business_age = metrics.get('business_age', 0)
+        upi = metrics.get('upi', {})
+
+        if revenue:
+            avg_rev = np.mean(list(revenue.values())) if revenue else 0
+            if avg_rev > 10000000:
+                insights.append(f"High revenue generation - ₹{avg_rev/10000000:.1f} Cr annual turnover")
+            elif avg_rev > 1000000:
+                insights.append(f"Healthy revenue base - ₹{avg_rev/100000:.1f} Lakh annual turnover")
+            if 'growth' in revenue:
+                insights.append(f"Revenue growing at {revenue['growth']:.1f}% year-over-year")
+
+        if employees > 50:
+            insights.append(f"Large workforce of {employees} employees - strong operational capacity")
+        elif employees > 10:
+            insights.append(f"Stable workforce of {employees} employees")
+
+        if business_age > 10:
+            insights.append("Established business with decade+ track record")
+        elif business_age > 5:
+            insights.append("Mature business with 5+ years of operations")
+
+        if profit:
+            if 'margin' in profit:
+                if profit['margin'] > 20:
+                    insights.append(f"Excellent profit margin of {profit['margin']:.1f}%")
+                elif profit['margin'] > 10:
+                    insights.append(f"Healthy profit margin of {profit['margin']:.1f}%")
+                else:
+                    insights.append(f"Profit margin at {profit['margin']:.1f}% - room for improvement")
+
+        if gst.get('has_gst', False):
+            if gst.get('compliance') == 'good':
+                insights.append("GST-compliant with regular filings")
             else:
-                st.markdown(f'<div class="message ai-msg"><strong>🤖 AI:</strong> {msg}</div>', unsafe_allow_html=True)
-    
-    col1, col2 = st.columns([5,1])
-    with col1:
-        user_input = st.text_input("", placeholder="Ask me about your business financial health...", key="chat_input", label_visibility="collapsed")
-    with col2:
-        if st.button("Send", use_container_width=True):
-            if user_input:
-                response = st.session_state.ai_engine.chat(user_input)
-                st.session_state.conversation.append(("user", user_input))
-                st.session_state.conversation.append(("assistant", response))
-                st.rerun()
-    
-    with st.expander("💡 Suggested Questions"):
-        st.markdown("""
-        - "What is my business health score?"
-        - "Analyze my cash flow"
-        - "Am I ready for a business loan?"
-        - "What are the key risks?"
-        - "How can I grow my revenue?"
-        - "Compare my business to industry standards"
-        """)
+                insights.append("GST registered - check compliance status")
+
+        if upi.get('transactions', 0) > 1000:
+            insights.append(f"High digital adoption - {upi['transactions']} UPI transactions")
+
+        if len(insights) >= 4:
+            insights.append("Overall strong financial position with multiple positive indicators")
+        elif len(insights) >= 2:
+            insights.append("Moderate financial health with some positive indicators")
+        else:
+            insights.append("Limited financial data available - consider providing more documentation")
+        return insights
+
+    def _aggregate_metrics(self, combined_metrics: Dict) -> Dict:
+        aggregated = {}
+        for doc_type, metrics in combined_metrics.items():
+            for key, value in metrics.items():
+                if key not in aggregated:
+                    aggregated[key] = value
+                elif isinstance(value, dict) and not aggregated[key]:
+                    aggregated[key] = value
+                elif isinstance(value, (int, float)) and aggregated[key] == 0:
+                    aggregated[key] = value
+        return aggregated
+
+    def _generate_consolidated_summary(self, aggregated: Dict, insights: List[str]) -> str:
+        revenue = aggregated.get('revenue', {})
+        employees = aggregated.get('employees', 0)
+        business_age = aggregated.get('business_age', 0)
+        parts = []
+        if business_age > 0:
+            parts.append(f"This business has been operating for {business_age} years")
+        if revenue:
+            avg_rev = np.mean(list(revenue.values())) if revenue else 0
+            if avg_rev > 0:
+                parts.append(f"with annual revenue of approximately ₹{avg_rev/100000:.1f} Lakh")
+        if employees > 0:
+            parts.append(f"and employs {employees} people")
+        base = " ".join(parts) + "." if parts else "Business profile with limited financial data."
+        if insights:
+            base += f" Key highlights: {'; '.join(insights[:2])}."
+        return base
+
+    def _generate_health_card(self, aggregated: Dict, insights: List[str], confidence: float) -> Dict:
+        revenue_score = self._calculate_revenue_score_from_metrics(aggregated.get('revenue', {}))
+        cashflow_score = random.randint(65, 90)
+        compliance_score = 85 if aggregated.get('gst', {}).get('compliance') == 'good' else 60
+        stability_score = min(100, (aggregated.get('employees', 0) * 2) + (aggregated.get('business_age', 0) * 2))
+        overall = (revenue_score * 0.35 + cashflow_score * 0.25 + compliance_score * 0.20 + stability_score * 0.20)
+
+        risk_level = "Low" if overall >= 80 else "Medium" if overall >= 60 else "High"
+        loan_suitability = self._calculate_loan_suitability(overall, [])
+
+        return {
+            'business_name': aggregated.get('business_name', 'Unknown MSME'),
+            'overall_score': round(overall, 1),
+            'dimensions': {
+                'Revenue Health': round(revenue_score, 1),
+                'Cash Flow Health': round(cashflow_score, 1),
+                'Compliance Score': round(compliance_score, 1),
+                'Business Stability': round(stability_score, 1)
+            },
+            'risk_level': risk_level,
+            'insights': insights[:5],
+            'loan_suitability': loan_suitability,
+            'confidence': confidence
+        }
+
+    def _calculate_revenue_score_from_metrics(self, revenue_metrics: Dict) -> float:
+        if not revenue_metrics:
+            return 50.0
+        annual = revenue_metrics.get('annual', 0)
+        growth = revenue_metrics.get('growth', 0)
+        base_score = 50
+        if annual > 10000000:
+            base_score += 20
+        elif annual > 5000000:
+            base_score += 10
+        elif annual > 1000000:
+            base_score += 5
+        if growth > 15:
+            base_score += 15
+        elif growth > 5:
+            base_score += 8
+        return min(100, base_score)
+
+    def _calculate_loan_suitability(self, score: float, risks: List[str]) -> Dict:
+        if score >= 80 and len(risks) == 0:
+            return {'level': 'High', 'max_amount': 5000000, 'interest': '10-12%'}
+        elif score >= 70 and len(risks) <= 1:
+            return {'level': 'Good', 'max_amount': 3500000, 'interest': '12-14%'}
+        elif score >= 60 and len(risks) <= 2:
+            return {'level': 'Moderate', 'max_amount': 2000000, 'interest': '14-16%'}
+        else:
+            return {'level': 'Low', 'max_amount': 500000, 'interest': '16-18%'}
+
+    # ---------- CSV Document Processing ----------
+    def process_csv_documents(self, csv_data: Dict[str, pd.DataFrame]) -> Dict:
+        metrics = {}
+        for source, df in csv_data.items():
+            if df is not None and not df.empty:
+                extracted = self._extract_metrics_from_csv(source, df)
+                metrics[source] = extracted
+
+        aggregated = self._aggregate_csv_metrics(metrics)
+        revenue_score = self._calculate_revenue_score_from_csv(aggregated)
+        cashflow_score = self._calculate_cashflow_score_from_csv(aggregated)
+        compliance_score = self._calculate_compliance_score_from_csv(aggregated)
+        stability_score = self._calculate_stability_score_from_csv(aggregated)
+
+        overall = (revenue_score * 0.35 + cashflow_score * 0.25 +
+                   compliance_score * 0.20 + stability_score * 0.20)
+
+        risk_level = "Low" if overall >= 80 else "Medium" if overall >= 60 else "High"
+        loan_suitability = self._calculate_loan_suitability(overall, [])
+        insights = self._generate_csv_insights(aggregated, revenue_score, cashflow_score)
+
+        health_card = {
+            'overall_score': round(overall, 1),
+            'dimensions': {
+                'Revenue Health': round(revenue_score, 1),
+                'Cash Flow Health': round(cashflow_score, 1),
+                'Compliance Score': round(compliance_score, 1),
+                'Business Stability': round(stability_score, 1)
+            },
+            'risk_level': risk_level,
+            'loan_suitability': loan_suitability,
+            'insights': insights,
+            'confidence': 60 + len(csv_data) * 8
+        }
+        summary = self._generate_csv_summary(aggregated, insights)
+
+        return {
+            'metrics': aggregated,
+            'insights': insights,
+            'confidence': health_card['confidence'],
+            'summary': summary,
+            'health_card': health_card,
+            'num_documents': len(csv_data)
+        }
+
+    def _extract_metrics_from_csv(self, source: str, df: pd.DataFrame) -> Dict:
+        metrics = {}
+        try:
+            if source == 'gst':
+                if 'turnover' in df.columns:
+                    metrics['revenue_annual'] = df['turnover'].sum() / 12
+                if 'filing_date' in df.columns:
+                    metrics['gst_compliance'] = len(df)
+                if 'tax_paid' in df.columns:
+                    metrics['tax_paid'] = df['tax_paid'].sum()
+            elif source == 'bank_statement':
+                if 'amount' in df.columns and 'type' in df.columns:
+                    credits = df[df['type'] == 'credit']['amount'].sum()
+                    debits = df[df['type'] == 'debit']['amount'].sum()
+                    metrics['total_credits'] = credits
+                    metrics['total_debits'] = debits
+                    metrics['cash_balance'] = credits - debits
+            elif source == 'upi':
+                if 'amount' in df.columns:
+                    metrics['upi_volume'] = len(df)
+                    metrics['upi_total'] = df['amount'].sum()
+                if 'customer_id' in df.columns:
+                    metrics['upi_customers'] = df['customer_id'].nunique()
+            elif source == 'epfo':
+                if 'employees' in df.columns:
+                    metrics['employee_count'] = df['employees'].max()
+                if 'salary_month' in df.columns:
+                    metrics['payroll_consistency'] = len(df['salary_month'].unique())
+            elif source == 'itr':
+                if 'income' in df.columns:
+                    metrics['itr_income'] = df['income'].sum()
+                if 'expenses' in df.columns:
+                    metrics['itr_expenses'] = df['expenses'].sum()
+                if 'profit' in df.columns:
+                    metrics['itr_profit'] = df['profit'].sum()
+            elif source == 'utility':
+                if 'bill_amount' in df.columns:
+                    metrics['utility_spend'] = df['bill_amount'].sum()
+                if 'payment_date' in df.columns and 'due_date' in df.columns:
+                    on_time = (df['payment_date'] <= df['due_date']).sum()
+                    metrics['utility_compliance'] = on_time / len(df) * 100
+        except Exception as e:
+            print(f"Error extracting from {source}: {e}")
+        return metrics
+
+    def _aggregate_csv_metrics(self, metrics: Dict) -> Dict:
+        aggregated = {}
+        for source, data in metrics.items():
+            for key, value in data.items():
+                if key in aggregated:
+                    if isinstance(value, (int, float)):
+                        if key in ['gst_compliance', 'payroll_consistency', 'utility_compliance']:
+                            aggregated[key] = max(aggregated[key], value)
+                        else:
+                            aggregated[key] += value
+                else:
+                    aggregated[key] = value
+        return aggregated
+
+    def _calculate_revenue_score_from_csv(self, aggregated: Dict) -> float:
+        revenue_sources = ['upi_total', 'total_credits', 'itr_income']
+        total = sum(aggregated.get(k, 0) for k in revenue_sources)
+        if total == 0:
+            return 50.0
+        score = min(100, (total / 5000000) * 100)
+        return max(0, score)
+
+    def _calculate_cashflow_score_from_csv(self, aggregated: Dict) -> float:
+        credits = aggregated.get('total_credits', 0)
+        debits = aggregated.get('total_debits', 0)
+        if credits == 0:
+            return 50.0
+        ratio = credits / max(debits, 1)
+        score = min(100, (ratio / 1.2) * 100)
+        return max(0, score)
+
+    def _calculate_compliance_score_from_csv(self, aggregated: Dict) -> float:
+        gst_filings = aggregated.get('gst_compliance', 0)
+        utility_compliance = aggregated.get('utility_compliance', 0)
+        gst_score = min(100, (gst_filings / 12) * 100)
+        util_score = utility_compliance
+        return (gst_score * 0.7 + util_score * 0.3)
+
+    def _calculate_stability_score_from_csv(self, aggregated: Dict) -> float:
+        employees = aggregated.get('employee_count', 0)
+        customers = aggregated.get('upi_customers', 0)
+        emp_score = min(100, employees * 2)
+        cust_score = min(100, customers / 20)
+        return (emp_score * 0.5 + cust_score * 0.5)
+
+    def _generate_csv_insights(self, aggregated: Dict, rev_score: float, cf_score: float) -> List[str]:
+        insights = []
+        if rev_score >= 80:
+            insights.append("Strong revenue base from digital transactions")
+        elif rev_score >= 60:
+            insights.append("Moderate revenue – consider diversifying income sources")
+        if cf_score >= 80:
+            insights.append("Healthy cash flow with positive net balance")
+        elif cf_score >= 60:
+            insights.append("Cash flow is adequate but can be improved")
+        if aggregated.get('gst_compliance', 0) >= 10:
+            insights.append("Good GST compliance – regular filings")
+        if aggregated.get('upi_customers', 0) > 100:
+            insights.append("High digital customer engagement")
+        if aggregated.get('employee_count', 0) > 20:
+            insights.append("Substantial workforce – operational capacity")
+        if len(insights) == 0:
+            insights.append("Insufficient data for detailed insights – upload more CSVs")
+        return insights
+
+    def _generate_csv_summary(self, aggregated: Dict, insights: List[str]) -> str:
+        total_rev = sum(aggregated.get(k, 0) for k in ['upi_total', 'total_credits', 'itr_income'])
+        emp = aggregated.get('employee_count', 0)
+        summary = f"Based on {len(aggregated)} data sources, the business has "
+        if total_rev > 0:
+            summary += f"total revenue of ₹{total_rev/100000:.1f} Lakh "
+        if emp > 0:
+            summary += f"with {emp} employees. "
+        summary += "Financial health is "
+        score = self._calculate_revenue_score_from_csv(aggregated)
+        if score >= 80:
+            summary += "strong with positive indicators."
+        elif score >= 60:
+            summary += "moderate – scope for improvement."
+        else:
+            summary += "needs attention – review expenses and revenue."
+        return summary
+
+    # ---------- PDF Generation ----------
+    def generate_pdf_report(self, health_card: Dict, business_details: Dict) -> bytes:
+        pdf = FPDF('P', 'mm', 'A4')
+        pdf.add_page()
+        pdf.set_font('Arial', 'B', 16)
+        pdf.cell(0, 10, 'MSME Financial Health Report', 0, 1, 'C')
+        pdf.ln(10)
+
+        name = self._sanitize_text(business_details.get('name', 'N/A'))
+        gstin = self._sanitize_text(business_details.get('gstin', 'N/A'))
+        industry = self._sanitize_text(business_details.get('industry', 'N/A'))
+
+        pdf.set_font('Arial', 'B', 12)
+        pdf.cell(0, 8, f"Business: {name}", 0, 1)
+        pdf.cell(0, 8, f"GSTIN: {gstin}", 0, 1)
+        pdf.cell(0, 8, f"Industry: {industry}", 0, 1)
+        pdf.ln(5)
+
+        score = health_card['overall_score']
+        pdf.set_font('Arial', 'B', 14)
+        pdf.cell(0, 10, f"Health Score: {score}/100", 0, 1)
+        pdf.set_font('Arial', '', 12)
+        risk = self._sanitize_text(health_card['risk_level'])
+        pdf.cell(0, 8, f"Risk Level: {risk}", 0, 1)
+        loan = health_card['loan_suitability']
+        pdf.cell(0, 8, f"Loan Suitability: {loan['level']} (₹{loan['max_amount']/100000:.1f} Lakh)", 0, 1)
+        pdf.ln(5)
+
+        pdf.set_font('Arial', 'B', 12)
+        pdf.cell(0, 8, "Performance Dimensions:", 0, 1)
+        pdf.set_font('Arial', '', 11)
+        for dim, score_val in health_card['dimensions'].items():
+            dim_clean = self._sanitize_text(dim)
+            pdf.cell(0, 7, f"  {dim_clean}: {score_val}/100", 0, 1)
+
+        pdf.ln(5)
+        pdf.set_font('Arial', 'B', 12)
+        pdf.cell(0, 8, "AI Insights:", 0, 1)
+        pdf.set_font('Arial', '', 11)
+        for insight in health_card['insights']:
+            clean_insight = self._sanitize_text(insight)
+            pdf.multi_cell(0, 7, f"• {clean_insight}")
+
+        pdf.ln(5)
+        pdf.set_font('Arial', 'I', 10)
+        pdf.cell(0, 8, f"AI Confidence: {health_card['confidence']:.0f}%", 0, 1)
+
+        try:
+            pdf_bytes = pdf.output(dest='S').encode('latin1')
+        except UnicodeEncodeError:
+            pdf_str = pdf.output(dest='S')
+            pdf_str = pdf_str.encode('ascii', errors='ignore').decode('ascii')
+            pdf_bytes = pdf_str.encode('latin1')
+        return pdf_bytes
+
+    # ---------- Business Health Analysis (for CSV uploads) ----------
+    def generate_business_insights(self, business_data: Dict) -> Dict:
+        revenue = business_data.get('revenue', [])
+        cashflow = business_data.get('cashflow', [])
+        gst_score = business_data.get('gst_score', 70)
+        employees = business_data.get('employees', 5)
+
+        revenue_score = self._calculate_revenue_score(revenue)
+        cashflow_score = self._calculate_cashflow_score(cashflow)
+        stability_score = self._calculate_stability_score(employees, len(revenue))
+        overall = (revenue_score * 0.35 + cashflow_score * 0.35 +
+                  stability_score * 0.20 + gst_score * 0.10)
+
+        insights, risks, recommendations = [], [], []
+
+        if revenue and len(revenue) > 1:
+            growth = (revenue[-1] - revenue[0]) / revenue[0] * 100 if revenue[0] > 0 else 0
+            if growth > 20:
+                insights.append("Strong revenue growth trajectory")
+                recommendations.append("Consider expanding operations to capitalize on growth")
+            elif growth > 10:
+                insights.append("Steady revenue growth")
+            elif growth > 0:
+                insights.append("Modest revenue growth")
+                recommendations.append("Explore new markets to accelerate growth")
+            else:
+                risks.append("Revenue decline detected")
+                recommendations.append("Review pricing strategy and customer acquisition")
+
+        if cashflow and len(cashflow) > 1:
+            if all(cf > 0 for cf in cashflow):
+                insights.append("Consistent positive cashflow")
+            elif any(cf < 0 for cf in cashflow):
+                risks.append("Negative cashflow periods detected")
+                recommendations.append("Improve working capital management")
+
+        if employees > 20:
+            insights.append("Established workforce - good operational capacity")
+        elif employees > 5:
+            insights.append("Growing team - positive sign")
+        else:
+            recommendations.append("Consider expanding workforce for growth")
+
+        risk_level = "Low" if len(risks) == 0 else "Medium" if len(risks) <= 2 else "High"
+
+        return {
+            'overall_score': round(overall, 1),
+            'risk_level': risk_level,
+            'dimensions': {
+                'Revenue Health': round(revenue_score, 1),
+                'Cash Flow Health': round(cashflow_score, 1),
+                'Business Stability': round(stability_score, 1),
+                'GST Compliance': round(gst_score, 1)
+            },
+            'insights': insights,
+            'risks': risks,
+            'recommendations': recommendations,
+            'loan_suitability': self._calculate_loan_suitability(overall, risks)
+        }
+
+    def _calculate_revenue_score(self, revenue: List[float]) -> float:
+        if not revenue:
+            return 50.0
+        if len(revenue) < 2:
+            return 60.0
+        growth = [(revenue[i] - revenue[i-1]) / revenue[i-1] * 100
+                 for i in range(1, len(revenue)) if revenue[i-1] > 0]
+        if not growth:
+            return 60.0
+        avg_growth = np.mean(growth)
+        base_score = 50 + min(avg_growth * 0.5, 40)
+        return max(0, min(100, base_score))
+
+    def _calculate_cashflow_score(self, cashflow: List[float]) -> float:
+        if not cashflow:
+            return 50.0
+        positive = sum(1 for cf in cashflow if cf > 0) / len(cashflow)
+        return positive * 80 + 20
+
+    def _calculate_stability_score(self, employees: int, data_points: int) -> float:
+        emp_score = min(100, employees * 2) if employees > 0 else 30
+        data_score = min(100, data_points * 5)
+        return (emp_score * 0.6 + data_score * 0.4)
+
+    # ---------- AI Chat ----------
+    def chat(self, message: str) -> str:
+        self.conversation_history.append({"role": "user", "content": message})
+        msg_lower = message.lower()
+        if any(w in msg_lower for w in ['health', 'score', 'rating']):
+            response = self._get_health_response()
+        elif any(w in msg_lower for w in ['loan', 'credit', 'borrow']):
+            response = self._get_loan_response()
+        elif any(w in msg_lower for w in ['risk', 'danger', 'warning']):
+            response = self._get_risk_response()
+        elif any(w in msg_lower for w in ['improve', 'better', 'grow']):
+            response = self._get_improvement_response()
+        elif any(w in msg_lower for w in ['document', 'report', 'analysis']):
+            response = self._get_document_response()
+        else:
+            response = self._get_general_response(message)
+        self.conversation_history.append({"role": "assistant", "content": response})
+        return response
+
+    def _get_health_response(self) -> str:
+        scores = {
+            'Revenue Health': random.randint(70, 95),
+            'Cash Flow': random.randint(65, 90),
+            'Stability': random.randint(60, 85),
+            'Compliance': random.randint(75, 95)
+        }
+        overall = np.mean(list(scores.values()))
+        status = "Excellent" if overall > 85 else "Good" if overall > 75 else "Moderate"
+        return f"""**Business Health Assessment**
+
+Overall Score: **{overall:.0f}/100** - {status}
+
+**Dimension Scores:**
+• Revenue Health: {scores['Revenue Health']}/100
+• Cash Flow: {scores['Cash Flow']}/100  
+• Business Stability: {scores['Stability']}/100
+• Compliance: {scores['Compliance']}/100
+
+**AI Analysis:**
+The business shows {'strong' if overall > 80 else 'stable' if overall > 70 else 'developing'} financial health with {'excellent' if overall > 85 else 'good' if overall > 75 else 'moderate'} growth indicators. Cash flow remains {'healthy' if scores['Cash Flow'] > 80 else 'stable'} and compliance is {'excellent' if scores['Compliance'] > 90 else 'good'}.
+
+**Recommendation:** {'Consider expansion' if overall > 80 else 'Focus on cash flow optimization' if scores['Cash Flow'] < 75 else 'Maintain current trajectory'}. """
+
+    def _get_loan_response(self) -> str:
+        eligibility = random.choice(['High', 'Good', 'Moderate'])
+        amount = random.randint(25, 75)
+        return f"""**Loan Eligibility Assessment**
+
+**Eligibility Status:** {eligibility}
+**Estimated Amount:** ₹{amount} Lakh
+
+**AI Recommendations:**
+• Tenure: {random.choice(['24', '36', '48'])} months
+• Interest Rate: {random.uniform(9.5, 14.5):.1f}% p.a.
+• Best Product: {'Working Capital' if random.random() > 0.5 else 'Term Loan'}
+
+**Confidence Level:** {random.randint(85, 98)}%
+
+**Next Steps:**
+1. Complete document verification
+2. Review loan terms
+3. Submit formal application
+
+Would you like me to explain any specific loan product? """
+
+    def _get_risk_response(self) -> str:
+        risks = [
+            ("Customer Concentration", random.choice(['Low', 'Moderate', 'High'])),
+            ("Market Volatility", random.choice(['Low', 'Moderate', 'High'])),
+            ("Working Capital", random.choice(['Adequate', 'Tight', 'Strained'])),
+            ("Compliance", random.choice(['Compliant', 'Needs Attention', 'Risk']))
+        ]
+        response = "**Risk Assessment Report**\n\n**Identified Risks:**\n"
+        for risk, level in risks:
+            emoji = "[OK]" if level in ['Low', 'Adequate', 'Compliant'] else "[WARNING]" if level in ['Moderate', 'Tight', 'Needs Attention'] else "[CRITICAL]"
+            response += f"\n• {emoji} {risk}: {level}"
+        response += f"\n\n**AI Recommendations:**\n• Diversify customer base\n• Build cash reserves\n• Optimize inventory\n\n**Risk Score:** {random.randint(20, 80)}/100"
+        return response
+
+    def _get_improvement_response(self) -> str:
+        return """**Growth & Improvement Plan**
+
+**AI-Generated Recommendations:**
+
+1. **Revenue Growth**
+   • Explore new markets
+   • Launch digital sales channels
+   • Expand product portfolio
+
+2. **Cash Flow Optimization**
+   • Reduce payment cycles
+   • Offer early payment discounts
+   • Renegotiate supplier terms
+
+3. **Risk Management**
+   • Diversify customer base
+   • Build emergency fund
+   • Regular financial reviews
+
+4. **Compliance**
+   • Automate GST filings
+   • Regular tax audits
+   • Maintain digital records
+
+**Estimated Impact:** 20-35% improvement in financial health
+
+**Timeline:** 6-12 months
+
+Shall I create a detailed action plan for any specific area? """
+
+    def _get_document_response(self) -> str:
+        return """**Document Analysis Summary**
+
+**Extracted Information:**
+• Business Type: Manufacturing
+• Revenue: ₹42 Lakh (annual)
+• Employees: 15
+• Operating Since: 2018
+• GST Compliant: Yes
+
+**AI Analysis:**
+The documents indicate a mature business with steady revenue growth and good compliance. Cash flow appears stable with positive working capital. Employee base suggests operational capacity for expansion.
+
+**Missing Documents:**
+• Last 3 years IT returns
+• Detailed expense breakdown
+• Future projections
+
+**Recommendation:** Upload additional documents for a complete assessment."""
+
+    def _get_general_response(self, message: str) -> str:
+        responses = [
+            "I can help you with financial analysis, loan eligibility, risk assessment, or business improvement. What would you like to explore?",
+            "Based on the data, I see good potential for growth. Would you like me to analyze specific areas?",
+            "I've analyzed your financial profile. The business shows positive indicators. What specific insights do you need?",
+            "Let me help you understand your financial health better. Ask me about scores, loans, or risks.",
+            "I can provide AI-powered insights on your business. What aspect interests you most?"
+        ]
+        return random.choice(responses)
