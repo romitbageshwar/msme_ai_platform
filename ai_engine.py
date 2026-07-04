@@ -26,6 +26,7 @@ class AIFinancialEngine:
     # ---------- Helper to sanitize text for PDF ----------
     def _sanitize_text(self, text: str) -> str:
         """Remove emojis and non‑latin1 characters for PDF compatibility."""
+        # Remove common emojis
         emoji_pattern = re.compile("["
             u"\U0001F600-\U0001F64F"  # emoticons
             u"\U0001F300-\U0001F5FF"  # symbols & pictographs
@@ -35,22 +36,42 @@ class AIFinancialEngine:
             u"\U000024C2-\U0001F251"
             "]+", flags=re.UNICODE)
         text = emoji_pattern.sub(r'', text)
+        # Replace common special characters
         replacements = {
-            '→': '->', '✓': '[OK]', '⚠️': '[WARNING]', '✅': '[OK]',
-            '📊': '[DATA]', '📈': '[GROWTH]', '💪': '[STRONG]',
-            '💰': '[MONEY]', '🏢': '[BUSINESS]', '👥': '[TEAM]',
-            '📱': '[DIGITAL]', '🚀': '[GROWTH]', '🎯': '[TARGET]',
-            '🔍': '[SEARCH]', '🔔': '[ALERT]', '📑': '[REPORT]',
-            '⚙️': '[SETTINGS]', '📄': '[DOCUMENT]', '💬': '[CHAT]',
+            '→': '->',
+             '•': '-',
+    '₹': 'Rs.',
+    '–': '-',
+    '—': '-',
+            '✓': '[OK]',
+            '⚠️': '[WARNING]',
+            '✅': '[OK]',
+            '📊': '[DATA]',
+            '📈': '[GROWTH]',
+            '💪': '[STRONG]',
+            '💰': '[MONEY]',
+            '🏢': '[BUSINESS]',
+            '👥': '[TEAM]',
+            '📱': '[DIGITAL]',
+            '🚀': '[GROWTH]',
+            '🎯': '[TARGET]',
+            '🔍': '[SEARCH]',
+            '🔔': '[ALERT]',
+            '📑': '[REPORT]',
+            '⚙️': '[SETTINGS]',
+            '📄': '[DOCUMENT]',
+            '💬': '[CHAT]',
             '🧠': '[AI]'
         }
         for char, replacement in replacements.items():
             text = text.replace(char, replacement)
+        # Remove any remaining non‑latin1 characters
         text = text.encode('latin1', errors='ignore').decode('latin1')
         return text
 
     # ---------- Document Analysis (Text) ----------
     def analyze_documents(self, documents: Dict[str, str]) -> Dict:
+        """Analyze multiple uploaded text documents (legacy)"""
         combined_metrics = {}
         all_insights = []
         confidence = 0.0
@@ -352,6 +373,7 @@ class AIFinancialEngine:
 
     # ---------- CSV Document Processing ----------
     def process_csv_documents(self, csv_data: Dict[str, pd.DataFrame]) -> Dict:
+        """Process multiple CSV files (GST, Bank, UPI, EPFO, etc.) and generate health card."""
         metrics = {}
         for source, df in csv_data.items():
             if df is not None and not df.empty:
@@ -523,7 +545,7 @@ class AIFinancialEngine:
             summary += "needs attention – review expenses and revenue."
         return summary
 
-    # ---------- PDF Generation ----------
+    # ---------- PDF Generation (FIXED) ----------
     def generate_pdf_report(self, health_card: Dict, business_details: Dict) -> bytes:
         pdf = FPDF('P', 'mm', 'A4')
         pdf.add_page()
@@ -531,6 +553,7 @@ class AIFinancialEngine:
         pdf.cell(0, 10, 'MSME Financial Health Report', 0, 1, 'C')
         pdf.ln(10)
 
+        # Sanitize all text before adding to PDF
         name = self._sanitize_text(business_details.get('name', 'N/A'))
         gstin = self._sanitize_text(business_details.get('gstin', 'N/A'))
         industry = self._sanitize_text(business_details.get('industry', 'N/A'))
@@ -541,6 +564,7 @@ class AIFinancialEngine:
         pdf.cell(0, 8, f"Industry: {industry}", 0, 1)
         pdf.ln(5)
 
+        # Health Score
         score = health_card['overall_score']
         pdf.set_font('Arial', 'B', 14)
         pdf.cell(0, 10, f"Health Score: {score}/100", 0, 1)
@@ -548,9 +572,10 @@ class AIFinancialEngine:
         risk = self._sanitize_text(health_card['risk_level'])
         pdf.cell(0, 8, f"Risk Level: {risk}", 0, 1)
         loan = health_card['loan_suitability']
-        pdf.cell(0, 8, f"Loan Suitability: {loan['level']} (₹{loan['max_amount']/100000:.1f} Lakh)", 0, 1)
+        pdf.cell(0, 8, f"Loan Suitability: {loan['level']} (Rs. {loan['max_amount']/100000:.1f} Lakh)", 0, 1)
         pdf.ln(5)
 
+        # Dimensions
         pdf.set_font('Arial', 'B', 12)
         pdf.cell(0, 8, "Performance Dimensions:", 0, 1)
         pdf.set_font('Arial', '', 11)
@@ -559,23 +584,44 @@ class AIFinancialEngine:
             pdf.cell(0, 7, f"  {dim_clean}: {score_val}/100", 0, 1)
 
         pdf.ln(5)
+
+        # Insights
         pdf.set_font('Arial', 'B', 12)
         pdf.cell(0, 8, "AI Insights:", 0, 1)
         pdf.set_font('Arial', '', 11)
         for insight in health_card['insights']:
             clean_insight = self._sanitize_text(insight)
-            pdf.multi_cell(0, 7, f"• {clean_insight}")
-
+            pdf.multi_cell(0, 7, f"- {clean_insight}")
         pdf.ln(5)
+
+        # Confidence
         pdf.set_font('Arial', 'I', 10)
         pdf.cell(0, 8, f"AI Confidence: {health_card['confidence']:.0f}%", 0, 1)
 
+        # Generate PDF bytes safely.
+        # NOTE: fpdf's classic output() already encodes every page to latin-1
+        # internally, so if that raises UnicodeEncodeError, calling output()
+        # again on the same (already partially-finalized) FPDF object cannot
+        # recover - it just fails the same way again (or worse). The real
+        # fix is to make sure every string ever passed to cell()/multi_cell()
+        # above has already gone through self._sanitize_text(), which is the
+        # case in this function. As a last-resort safety net in case some
+        # future field is added without sanitizing it first, we catch the
+        # error and surface a clear message instead of a cryptic traceback.
         try:
-            pdf_bytes = pdf.output(dest='S').encode('latin1')
-        except UnicodeEncodeError:
-            pdf_str = pdf.output(dest='S')
-            pdf_str = pdf_str.encode('ascii', errors='ignore').decode('ascii')
-            pdf_bytes = pdf_str.encode('latin1')
+            output = pdf.output(dest='S')
+        except UnicodeEncodeError as e:
+            raise RuntimeError(
+                "PDF generation failed because some text contained a "
+                "character that isn't supported by the PDF's font "
+                "(only Latin-1 characters are supported). Make sure every "
+                "string passed to the PDF is run through _sanitize_text() "
+                "before being added."
+            ) from e
+
+        # Depending on fpdf/fpdf2 version, output(dest='S') may already
+        # return bytes, or a str that still needs encoding.
+        pdf_bytes = output.encode('latin1') if isinstance(output, str) else output
         return pdf_bytes
 
     # ---------- Business Health Analysis (for CSV uploads) ----------
